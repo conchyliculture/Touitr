@@ -84,6 +84,40 @@ async function loadPostsData() {
         // Initialize the timeline once data is loaded
         loadPosts();
         observer.observe(loading);
+        
+        // Check if there's a hash in the URL and load posts until that post is visible
+        if (window.location.hash) {
+            const targetId = window.location.hash.replace('#post-', '');
+            const targetIndex = allPosts.findIndex(p => p.id == targetId);
+            
+            if (targetIndex !== -1 && targetIndex >= POSTS_PER_PAGE) {
+                // Load all posts up to and including the target
+                const loadUntilTarget = () => {
+                    if (currentIndex <= targetIndex) {
+                        setTimeout(() => {
+                            loadPosts();
+                            if (currentIndex <= targetIndex && currentIndex < filteredPosts.length) {
+                                loadUntilTarget();
+                            } else {
+                                // Scroll to the target post after a brief delay
+                                setTimeout(() => {
+                                    const targetPost = document.getElementById(window.location.hash.substring(1));
+                                    if (targetPost) {
+                                        targetPost.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                        // Add highlight effect
+                                        targetPost.style.backgroundColor = 'rgba(29, 155, 240, 0.1)';
+                                        setTimeout(() => {
+                                            targetPost.style.backgroundColor = '';
+                                        }, 2000);
+                                    }
+                                }, 300);
+                            }
+                        }, 100);
+                    }
+                };
+                loadUntilTarget();
+            }
+        }
     } catch (error) {
         console.error('Error loading posts:', error);
         timeline.innerHTML = '<div class="no-results"><p>Failed to load posts. Please try again later.</p></div>';
@@ -129,7 +163,7 @@ function createPostHTML(post) {
 
     const replyHTML = post.replyTo ? `
         <div class="reply-indicator">
-            <span>Replying to <a href="#post-${post.replyTo}" class="reply-link" data-post-id="${post.replyTo}">@${post.replyToAuthor}</a></span>
+            <span>Replying to <a href="${post.replyTo}" class="reply-link">@${post.replyToAuthor}</a></span>
         </div>
     ` : '';
 
@@ -145,7 +179,8 @@ function createPostHTML(post) {
     ` : '';
 
     // First linkify URLs, then apply search highlighting
-    let processedContent = linkifyText(post.content);
+    // let processedContent = linkifyText(post.content);
+    let processedContent = post.content;
     processedContent = highlightText(processedContent, searchQuery);
 
     return `
@@ -279,60 +314,6 @@ clearSearch.addEventListener('click', () => {
     searchInput.value = '';
     searchPosts('');
     searchInput.focus();
-});
-
-// Handle reply link clicks
-document.addEventListener('click', (e) => {
-    if (e.target.classList.contains('reply-link')) {
-        e.preventDefault();
-        const postId = e.target.getAttribute('data-post-id');
-        const targetPost = document.getElementById(`post-${postId}`);
-        
-        if (targetPost) {
-            // Scroll to the post
-            targetPost.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            
-            // Add a highlight effect
-            targetPost.style.backgroundColor = 'rgba(29, 155, 240, 0.1)';
-            setTimeout(() => {
-                targetPost.style.backgroundColor = '';
-            }, 2000);
-        } else {
-            // If the post is not loaded yet, we need to load it first
-            const post = allPosts.find(p => p.id == postId);
-            if (post) {
-                // Clear search if active
-                if (searchQuery) {
-                    searchInput.value = '';
-                    searchPosts('');
-                }
-                
-                // Find the post index and load up to that point
-                const postIndex = allPosts.findIndex(p => p.id == postId);
-                if (postIndex >= currentIndex) {
-                    // Load posts until we reach the target
-                    const loadUntilPost = () => {
-                        if (currentIndex <= postIndex) {
-                            loadPosts();
-                            setTimeout(() => {
-                                const target = document.getElementById(`post-${postId}`);
-                                if (target) {
-                                    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                    target.style.backgroundColor = 'rgba(29, 155, 240, 0.1)';
-                                    setTimeout(() => {
-                                        target.style.backgroundColor = '';
-                                    }, 2000);
-                                } else if (currentIndex < filteredPosts.length) {
-                                    loadUntilPost();
-                                }
-                            }, 600);
-                        }
-                    };
-                    loadUntilPost();
-                }
-            }
-        }
-    }
 });
 
 // Initialize - load posts from JSON file

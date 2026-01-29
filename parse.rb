@@ -1,8 +1,10 @@
-require 'pry'
 require 'json'
+require 'net/http'
+require 'pry'
 require 'zip'
 
 class TouitrParser
+  CACHE_DIR = '.cache'.freeze
   IMAGES_DIR_NAME = 'images'.freeze
   TWITTER_HOST = 'fxtwitter.com'.freeze
 
@@ -22,6 +24,37 @@ class TouitrParser
 
     @zip_file = zip_file
     @zip = Zip::File.open(@zip_file)
+
+    unless Dir.exist?(CACHE_DIR)
+      Dir.mkdir(CACHE_DIR)
+    end
+
+    @tco_links_cache_path = File.join(CACHE_DIR, 'links')
+    @tco_links_cache = {}
+    if File.exist?(@tco_links_cache_path)
+      @tco_links_cache = JSON.parse(File.read(@tco_links_cache_path))
+    end
+  end
+
+  def update_tco_cache(from, to)
+    @tco_links_cache[from] = to
+    f = File.open(@tco_links_cache_path, 'w')
+    f.write(JSON.pretty_generate(@tco_links_cache))
+    f.close
+  end
+
+  def resolve_tco(url)
+    return @tco_links_cache[url] if @tco_links_cache[url]
+
+    $stdout.write("Resolving #{url}.... ")
+    resp = Net::HTTP.get_response(URI(url))
+    if resp.code == "301"
+      update_tco_cache(url, resp['location'])
+      $stdout.puts(resp['location'])
+      return resp['location']
+    else
+      raise StandardError, "Unexpected response code #{resp.code} from trying to resolve link #{url}"
+    end
   end
 
   def build_twitter_link(handle: nil, tweet_id: nil)
@@ -76,16 +109,21 @@ class TouitrParser
     return j
   end
 
-  def clean_tweet(content)
-    return content
+  def clean_tweet_content(tweet)
+    tweet['full_text'] = tweet['full_text'].gsub(/https:\/\/t.co\/[^\s]{10}/) { |x| resolve_tco(x) }
+
+    tweet['entities']['user_mentions'].each do |um|
+      tweet['full_text'].gsub!("@#{um['screen_name']}", "<a href='https://twitter.com/#{um['screen_name']}'>@#{um['screen_name']}</a>")
+    end
+    return tweet['full_text']
   end
 
   def tweets_to_json
     archive_owner = {
-    'handle' => get_archive_username(),
-    'displayname' => get_archive_displayname(),
-    'avatar' => get_archive_avatar(),
-    'id' => get_archive_userid() 
+      'handle' => get_archive_username(),
+      'displayname' => get_archive_displayname(),
+      'avatar' => get_archive_avatar(),
+      'id' => get_archive_userid()
     }
     res = []
     javascript_to_json('data/tweets.js').each do |t|
@@ -101,10 +139,16 @@ class TouitrParser
           'handle' => archive_owner['handle'],
           "id" => tweet['id'],
           "timestamp" => tweet['created_at'],
-          "content" => clean_tweet(tweet['full_text']),
           "type" => tweet['type'] || 'default'
         }
-        if tweet['in_reply_to_status_id'] =~ /^\d+$/
+
+        if tweet['full_text'].start_with?('RT @')
+          info['isRetweet'] = true
+          info['retweetedBy'] = archive_owner['displayname']
+          info['avatar'] = ''
+          info['author'] = tweet['full_text'].scan(/RT @([^\s]+):/)[0][0]
+          tweet['full_text'] = tweet['full_text'].delete_prefix("RT @#{info['author']}: ")
+        elsif tweet['in_reply_to_status_id'] =~ /^\d+$/
           reply_to_id = tweet['in_reply_to_user_id_str']
           if reply_to_id == archive_owner['id']
             info["replyTo"] = build_twitter_link(handle: archive_owner['handle'], tweet_id: tweet['in_reply_to_status_id'])
@@ -116,7 +160,8 @@ class TouitrParser
               info["replyTo"] = build_twitter_link(handle: reply_to_handle, tweet_id: tweet['in_reply_to_status_id'])
               info["replyToAuthor"] = tweet['in_reply_to_screen_name']
             elsif tweet['full_text'].start_with?('@')
-              reply_to_handle = tweet['full_text'].scan(/^@([^ ]+)/)[0][0] 
+              reply_to_handle = tweet['full_text'].scan(/^@([^ ]+)/)[0][0]
+              tweet['full_text'] = tweet['full_text'].delete_prefix("@#{reply_to_handle} ")
               info["replyTo"] = build_twitter_link(handle: reply_to_handle, tweet_id: tweet['in_reply_to_status_id'])
               info["replyToAuthor"] = tweet['in_reply_to_screen_name']
             else
@@ -125,13 +170,16 @@ class TouitrParser
           end
         end
 
+        info['content'] = clean_tweet_content(tweet)
+
+
         case info['type']
         when 'photo'
           type['media'] = tweet['media'].select { |m| m['type'] == 'photo' }.map do |m|
             find_media(m['media_url_https'].split('/')[-1].split('.')[0])
           end
         end
-      rescue Exception => e
+      rescue StandardError => e
         puts e.backtrace
         puts e
         binding.pry
