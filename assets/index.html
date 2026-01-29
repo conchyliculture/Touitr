@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Timeline</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>Timeline</h1>
+            <div class="search-container">
+                <input 
+                    type="text" 
+                    id="searchInput" 
+                    class="search-input" 
+                    placeholder="Search posts..."
+                >
+                <button id="clearSearch" class="clear-btn" style="display: none;">✕</button>
+            </div>
+        </header>
+
+        <main class="timeline" id="timeline">
+            <!-- Posts will be dynamically inserted here -->
+        </main>
+
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p>Loading more posts...</p>
+        </div>
+
+        <div id="noResults" class="no-results" style="display: none;">
+            <p>No posts found matching your search.</p>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
