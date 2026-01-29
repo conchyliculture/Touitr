@@ -125,6 +125,14 @@ class TouitrParser
     tweet['entities']['user_mentions'].each do |um|
       tweet['full_text'].gsub!("@#{um['screen_name']}", "<a href='https://twitter.com/#{um['screen_name']}'>@#{um['screen_name']}</a>")
     end
+
+    if tweet['extended_entities']
+      tweet['extended_entities']['media'].each do |m|
+        # We don't need the link to the media
+        tweet['full_text'].gsub!(m['expanded_url'].gsub('x.com', 'twitter.com'), '')
+      end
+    end
+
     tweet['full_text'].gsub!("\n", "<br/>")
     return tweet['full_text']
   end
