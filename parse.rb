@@ -91,8 +91,15 @@ class TouitrParser
   end
 
   def find_media(pattern)
-    pp @zip.glob("data/tweets_media/*#{pattern}*")
-    exit
+    results = @zip.glob("data/tweets_media/*#{pattern}*")
+
+    if results.size == 1
+      return results[0].name
+    elsif results.empty?
+      raise StandardError, "Could not find a media with pattern *#{pattern}*"
+    else
+      raise StandardError, "Found more than one media with pattern *#{pattern}*"
+    end
   end
 
   def extract_file(zip_path, destination)
@@ -110,11 +117,15 @@ class TouitrParser
   end
 
   def clean_tweet_content(tweet)
-    tweet['full_text'] = tweet['full_text'].gsub(/https:\/\/t.co\/[^\s]{10}/) { |x| resolve_tco(x) }
+    tweet['full_text'] = tweet['full_text'].gsub(/https:\/\/t.co\/[^\s]{10}/) do |x|
+      d = resolve_tco(x)
+      "<a href='#{d}'>#{d}</a>"
+    end
 
     tweet['entities']['user_mentions'].each do |um|
       tweet['full_text'].gsub!("@#{um['screen_name']}", "<a href='https://twitter.com/#{um['screen_name']}'>@#{um['screen_name']}</a>")
     end
+    tweet['full_text'].gsub!("\n", "<br/>")
     return tweet['full_text']
   end
 
@@ -170,15 +181,38 @@ class TouitrParser
           end
         end
 
-        info['content'] = clean_tweet_content(tweet)
+        if tweet['extended_entities']
+          info['media'] = tweet['extended_entities']['media'].map do |m|
+            case m['type']
+            when 'photo'
+              m_url = m['media_url_https']
+              m_zip_path = find_media("#{tweet['id']}*#{m_url.split('/')[-1]}*")
+            when 'video'
+              m_zip_path = find_media(tweet['id_str'])
+            when 'animated_gif'
+              m_zip_path = find_media(tweet['id_str'])
+            else
+              raise StandardError, "Unsupported extended_entities media type #{m['type']}"
+            end
+            dest_image_filename = File.basename(m_zip_path)
+            extract_file(m_zip_path, File.join(@pics_directory, dest_image_filename))
+            item = "/#{IMAGES_DIR_NAME}/#{dest_image_filename}"
 
+            item
+          end
 
-        case info['type']
-        when 'photo'
-          type['media'] = tweet['media'].select { |m| m['type'] == 'photo' }.map do |m|
-            find_media(m['media_url_https'].split('/')[-1].split('.')[0])
+        elsif tweet['entities']['media']
+          info['media'] = tweet['entities']['media'].map do |m|
+            m_url = m['media_url_https']
+            m_zip_path = find_media(m_url.split('/')[-1])
+            dest_image_filename = File.basename(m_zip_path)
+            extract_file(m_zip_path, File.join(@pics_directory, dest_image_filename))
+
+            "/#{IMAGES_DIR_NAME}/#{dest_image_filename}"
           end
         end
+
+        info['content'] = clean_tweet_content(tweet)
       rescue StandardError => e
         puts e.backtrace
         puts e

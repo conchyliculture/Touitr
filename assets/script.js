@@ -163,7 +163,7 @@ function createPostHTML(post) {
 
     const replyHTML = post.replyTo ? `
         <div class="reply-indicator">
-            <span>Replying to <a href="${post.replyTo}" class="reply-link">@${post.replyToAuthor}</a></span>
+            <span>💬 Replying to <a href="${post.replyTo}" class="reply-link">@${post.replyToAuthor}</a></span>
         </div>
     ` : '';
 
@@ -188,7 +188,7 @@ function createPostHTML(post) {
             ${retweetHTML}
             ${replyHTML}
             <div class="post-header">
-                <img src="${post.avatar}" alt="${post.author}" class="avatar" loading="lazy">
+                <img src="${post.avatar}" alt="${post.author.slice(0,3)}" class="avatar" loading="lazy">
                 <div class="post-info">
                     <div class="post-author">
                         <span class="author-name">${post.author}</span>
