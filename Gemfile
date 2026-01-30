@@ -2,11 +2,8 @@
 
 source "https://rubygems.org"
 
-gem "curb"
 gem "mechanize"
 gem "nokogiri"
-gem "rake"
-gem "rdbg"
+gem "pry"
 gem "rubocop"
-gem 'test-unit'
-gem "zip"
+gem "rubyzip"
