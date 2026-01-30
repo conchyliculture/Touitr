@@ -81,47 +81,62 @@ async function loadPostsData() {
         
         filteredPosts = [...allPosts];
         
-        // Initialize the timeline once data is loaded
-        loadPosts();
-        observer.observe(loading);
-        
-        // Check if there's a hash in the URL and load posts until that post is visible
+        // Check if there's a hash in the URL
         if (window.location.hash) {
             const targetId = window.location.hash.replace('#post-', '');
             const targetIndex = allPosts.findIndex(p => p.id == targetId);
             
-            if (targetIndex !== -1 && targetIndex >= POSTS_PER_PAGE) {
-                // Load all posts up to and including the target
-                const loadUntilTarget = () => {
-                    if (currentIndex <= targetIndex) {
-                        setTimeout(() => {
-                            loadPosts();
-                            if (currentIndex <= targetIndex && currentIndex < filteredPosts.length) {
-                                loadUntilTarget();
-                            } else {
-                                // Scroll to the target post after a brief delay
-                                setTimeout(() => {
-                                    const targetPost = document.getElementById(window.location.hash.substring(1));
-                                    if (targetPost) {
-                                        targetPost.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                        // Add highlight effect
-                                        targetPost.style.backgroundColor = 'rgba(29, 155, 240, 0.1)';
-                                        setTimeout(() => {
-                                            targetPost.style.backgroundColor = '';
-                                        }, 2000);
-                                    }
-                                }, 300);
-                            }
-                        }, 100);
-                    }
-                };
-                loadUntilTarget();
+            if (targetIndex !== -1) {
+                // Load only the target post
+                const targetPost = allPosts[targetIndex];
+                timeline.insertAdjacentHTML('beforeend', createPostHTML(targetPost));
+                
+                // Add a "View full timeline" button
+                const returnButton = document.createElement('div');
+                returnButton.className = 'return-to-timeline';
+                returnButton.innerHTML = `
+                    <a href="${window.location.pathname}" class="return-button">
+                        ← View full timeline
+                    </a>
+                `;
+                timeline.insertBefore(returnButton, timeline.firstChild);
+                
+                // Use requestAnimationFrame to ensure the DOM is updated before scrolling
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        const targetElement = document.getElementById(window.location.hash.substring(1));
+                        if (targetElement) {
+                            // Scroll to show the post properly
+                            targetElement.scrollIntoView({ behavior: 'auto', block: 'start' });
+                            // Add highlight effect
+                            targetElement.style.backgroundColor = 'rgba(29, 155, 240, 0.1)';
+                            setTimeout(() => {
+                                targetElement.style.backgroundColor = '';
+                            }, 2000);
+                        }
+                    });
+                });
+                
+                // Hide the loading indicator
+                loading.style.display = 'none';
+                
+                return;
             }
         }
+        
+        // Normal initialization without anchor
+        loadPosts();
+        observer.observe(loading);
+        
     } catch (error) {
         console.error('Error loading posts:', error);
         timeline.innerHTML = '<div class="no-results"><p>Failed to load posts. Please try again later.</p></div>';
     }
+}
+
+// Load previous posts (for scrolling up from anchored post) - no longer needed
+function loadPreviousPosts(targetIndex) {
+    // Not used anymore
 }
 
 // Format number (e.g., 1234 -> 1.2K)
@@ -149,7 +164,26 @@ function createPostHTML(post) {
     const mediaHTML = post.media ? `
         <div class="post-media">
             <div class="media-grid ${post.media.length > 1 ? `grid-${post.media.length}` : ''}">
-                ${post.media.map(url => `<img src="${url}" alt="Post media" loading="lazy">`).join('')}
+                ${post.media.map((media, index) => {
+                    if (typeof media === 'string') {
+                        // Legacy format - assume it's an image
+                        return `<img src="${media}" alt="Post media" loading="lazy">`;
+                    } else if (media.type === 'video') {
+                        return `
+                            <div class="video-container" data-video-url="${media.url}">
+                                <img src="${media.thumbnail}" alt="Video thumbnail" loading="lazy" class="video-thumbnail">
+                                <div class="video-play-button">
+                                    <svg viewBox="0 0 24 24" width="48" height="48">
+                                        <circle cx="12" cy="12" r="11" fill="rgba(0,0,0,0.7)" stroke="white" stroke-width="1"/>
+                                        <polygon points="9,7 9,17 17,12" fill="white"/>
+                                    </svg>
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        return `<img src="${media.url}" alt="Post media" loading="lazy">`;
+                    }
+                }).join('')}
             </div>
         </div>
     ` : '';
@@ -163,7 +197,7 @@ function createPostHTML(post) {
 
     const replyHTML = post.replyTo ? `
         <div class="reply-indicator">
-            <span>💬 Replying to <a href="${post.replyTo}" class="reply-link">@${post.replyToAuthor}</a></span>
+            <span>Replying to <a href="${post.replyTo}" class="reply-link">@${post.replyToAuthor}</a></span>
         </div>
     ` : '';
 
@@ -179,8 +213,7 @@ function createPostHTML(post) {
     ` : '';
 
     // First linkify URLs, then apply search highlighting
-    // let processedContent = linkifyText(post.content);
-    let processedContent = post.content;
+    let processedContent = linkifyText(post.content);
     processedContent = highlightText(processedContent, searchQuery);
 
     return `
@@ -188,7 +221,7 @@ function createPostHTML(post) {
             ${retweetHTML}
             ${replyHTML}
             <div class="post-header">
-                <img src="${post.avatar}" alt="${post.author.slice(0,3)}" class="avatar" loading="lazy">
+                <img src="${post.avatar}" alt="${post.author}" class="avatar" loading="lazy">
                 <div class="post-info">
                     <div class="post-author">
                         <span class="author-name">${post.author}</span>
@@ -314,6 +347,23 @@ clearSearch.addEventListener('click', () => {
     searchInput.value = '';
     searchPosts('');
     searchInput.focus();
+});
+
+// Handle video play clicks
+document.addEventListener('click', (e) => {
+    const videoContainer = e.target.closest('.video-container');
+    if (videoContainer) {
+        const videoUrl = videoContainer.getAttribute('data-video-url');
+        
+        // Replace the container with an actual video element
+        const video = document.createElement('video');
+        video.src = videoUrl;
+        video.controls = true;
+        video.autoplay = true;
+        video.className = 'video-player';
+        
+        videoContainer.replaceWith(video);
+    }
 });
 
 // Initialize - load posts from JSON file
