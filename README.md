@@ -8,6 +8,8 @@ Generates a folder with a statified Twitter-like clone.
 | 🚨🚨 ALL THE HTML/CSS/JAVASCRIPT PART IS 99% VIBECODED 🚨🚨    |
 
 
+![screenshot of the output](screenshot.jpg)
+
 ## Install
 
 ```
