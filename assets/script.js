@@ -165,9 +165,8 @@ function createPostHTML(post) {
         <div class="post-media">
             <div class="media-grid ${post.media.length > 1 ? `grid-${post.media.length}` : ''}">
                 ${post.media.map((media, index) => {
-                    if (typeof media === 'string') {
-                        // Legacy format - assume it's an image
-                        return `<img src="${media}" alt="Post media" loading="lazy">`;
+                    if (media.type === 'image') {
+                        return `<img src="${media.url}" alt="Post media" loading="lazy">`;
                     } else if (media.type === 'video') {
                         return `
                             <div class="video-container" data-video-url="${media.url}">
@@ -213,7 +212,7 @@ function createPostHTML(post) {
     ` : '';
 
     // First linkify URLs, then apply search highlighting
-    let processedContent = linkifyText(post.content);
+    let processedContent = post.content;
     processedContent = highlightText(processedContent, searchQuery);
 
     return `
@@ -221,22 +220,22 @@ function createPostHTML(post) {
             ${retweetHTML}
             ${replyHTML}
             <div class="post-header">
-                <img src="${post.avatar}" alt="${post.author}" class="avatar" loading="lazy">
+                <a href='https://twitter.com/${post.author}' class="avatar">
+                <img src="${post.avatar}" alt="${post.author.slice(0,3)}" class="avatar" loading="lazy">
+                </a>
                 <div class="post-info">
                     <div class="post-author">
-                        <span class="author-name">${post.author}</span>
-                        <span class="author-handle">${post.handle}</span>
+                        <span class="author-name"><a href='https://twitter.com/${post.author}'>${post.author}</a></span>
+                        <span class="author-handle"><a href='https://twitter.com/${post.handle}'>@${post.handle}</a></span>
                         <span class="post-date-separator">·</span>
                         <a href="#post-${post.id}" class="post-date" title="${formatFullTimestamp(post.timestamp)}">${formatDate(post.timestamp)}</a>
+                        <span class="post-date-separator">·</span>
+                        <a href="https://twitter.com/${post.handle}/status/${post.id}" class="origlink">View original on Twitter</a>
                     </div>
                     <div class="post-content">${processedContent}</div>
                     ${linkPreviewHTML}
                     ${mediaHTML}
                     <div class="post-actions">
-                        <div class="action-btn">
-                            <span>💬</span>
-                            <span>${formatNumber(post.replies)}</span>
-                        </div>
                         <div class="action-btn">
                             <span>🔄</span>
                             <span>${formatNumber(post.retweets)}</span>
@@ -244,9 +243,6 @@ function createPostHTML(post) {
                         <div class="action-btn">
                             <span>❤️</span>
                             <span>${formatNumber(post.likes)}</span>
-                        </div>
-                        <div class="action-btn">
-                            <span>📤</span>
                         </div>
                     </div>
                 </div>
@@ -360,6 +356,7 @@ document.addEventListener('click', (e) => {
         video.src = videoUrl;
         video.controls = true;
         video.autoplay = true;
+        video.preload = 'metadata';
         video.className = 'video-player';
         
         videoContainer.replaceWith(video);
