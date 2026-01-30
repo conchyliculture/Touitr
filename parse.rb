@@ -1,8 +1,10 @@
 require 'json'
 require 'mechanize'
+require "logger"
 require 'net/http'
 require 'nokogiri'
 require 'pry'
+require 'timeout'
 require 'zip'
 
 class TouitrParser
@@ -12,6 +14,9 @@ class TouitrParser
 
   def initialize(zip_file, destination_directory)
     raise StandardError, "Please specify an existing zipfile" unless zip_file
+
+    @log = Logger.new($stdout)
+    @log.level = $VERBOSE ? Logger::DEBUG : Logger::WARN
 
     @destination_directory = destination_directory
     unless Dir.exist?(@destination_directory)
@@ -34,7 +39,12 @@ class TouitrParser
     @tco_links_cache_path = File.join(CACHE_DIR, 'links')
     @tco_links_cache = {}
     if File.exist?(@tco_links_cache_path)
-      @tco_links_cache = JSON.parse(File.read(@tco_links_cache_path))
+      begin
+        @tco_links_cache = JSON.parse(File.read(@tco_links_cache_path))
+      rescue StandardError => e
+        @log.error "Error parsing cache file #{@tco_links_cache_path}. Consider deleting the file."
+        raise e
+      end
     end
 
     @og_cache_path = File.join(CACHE_DIR, 'meta-og')
@@ -60,10 +70,12 @@ class TouitrParser
     begin
       mechanize = Mechanize.new
       mechanize.user_agent_alias = "Windows Edge"
-      resp = Nokogiri::HTML.parse(mechanize.get(url).body)
-      res = Hash[resp.css('head meta').select { |meta| (meta['property'] || '').start_with?('og:') }.map { |meta| [meta['property'], meta['content']] }]
-    rescue Socket::ResolutionError, Mechanize::ResponseCodeError
-      return res
+      Timeout.timeout(5) {
+        resp = Nokogiri::HTML.parse(mechanize.get(url).body)
+        res = Hash[resp.css('head meta').select { |meta| (meta['property'] || '').start_with?('og:') }.map { |meta| [meta['property'], meta['content']] }]
+      }
+    rescue Socket::ResolutionError, Mechanize::ResponseCodeError, Timeout::Error => e
+      @log.warn "Error #{e.class} when triyng to pull metadata from #{url}"
     end
     res.each do |k, v|
       update_og_cache(url, k, v)
@@ -81,11 +93,13 @@ class TouitrParser
   def resolve_tco(url)
     return @tco_links_cache[url] if @tco_links_cache[url]
 
-    $stdout.write("Resolving #{url}.... ")
+    @log.info("Resolving #{url}.... ")
     resp = Net::HTTP.get_response(URI(url))
     if resp.code == "301"
-      update_tco_cache(url, resp['location'])
-      $stdout.puts(resp['location'])
+      loc = resp['location']
+      loc = loc.force_encoding('utf-8')
+      @log.info("... To #{loc}")
+      update_tco_cache(url, loc)
       return resp['location']
     else
       raise StandardError, "Unexpected response code #{resp.code} from trying to resolve link #{url}"
@@ -131,7 +145,8 @@ class TouitrParser
     if results.size == 1
       return results[0].name
     elsif results.empty?
-      raise StandardError, "Could not find a media with pattern *#{pattern}*"
+      @log.warn "Could not find a media with pattern *#{pattern}* in the archive"
+      return nil
     else
       raise StandardError, "Found more than one media with pattern *#{pattern}*"
     end
@@ -139,7 +154,7 @@ class TouitrParser
 
   def extract_file(zip_path, destination)
     if File.exist?(destination)
-      puts "File #{destination} already exists, skipping extraction"
+      @log.debug "File #{destination} already exists, skipping extraction"
       return
     end
     File.new(destination, 'w+').write(@zip.read(zip_path))
@@ -169,7 +184,8 @@ class TouitrParser
     end
 
     tweet['full_text'].gsub!(/#([^\s]+)/).each do
-      "<a href='https://twitter.com/hashtag/#{$1}'>##{$1}</a>" 
+      hashtag = Regexp.last_match(1)
+      "<a href='https://twitter.com/hashtag/#{hashtag}'>##{hashtag}</a>" # rubocop:disable Lint/Void
     end
 
     tweet['full_text'].gsub!("\n", "<br/>")
@@ -184,7 +200,9 @@ class TouitrParser
       'id' => get_archive_userid()
     }
     res = []
-    javascript_to_json('data/tweets.js').each do |t|
+    all_tweets = javascript_to_json('data/tweets.js')
+    @log.info("Will convert #{all_tweets.size} tweets")
+    all_tweets.each do |t|
       tweet = t['tweet']
 
       begin
@@ -199,7 +217,6 @@ class TouitrParser
           "timestamp" => tweet['created_at'],
           "type" => tweet['type'] || 'default'
         }
-
 
         if tweet['full_text'].start_with?('RT @')
           info['isRetweet'] = true
@@ -225,11 +242,10 @@ class TouitrParser
               info["replyTo"] = build_twitter_link(handle: reply_to_handle, tweet_id: tweet['in_reply_to_status_id'])
               info["replyToAuthor"] = tweet['in_reply_to_screen_name']
             else
-              raise StandardError, "Couldn't find who this tweet was a reply to : #{tweet}"
+              @log.warn "Couldn't find who this tweet was a reply to : #{tweet['id_str']}, most likely User with id #{tweet['in_reply_to_user_id']} have deleted their account"
             end
           end
         end
-
 
         if tweet['extended_entities']
           info['media'] = tweet['extended_entities']['media'].map do |m|
@@ -243,7 +259,7 @@ class TouitrParser
               m_zip_path = find_media("#{tweet['id']}*#{m_url.split('/')[-1]}*")
             when 'video'
               item['type'] = 'video'
-              m_zip_path = find_media(tweet['id_str'])
+              m_zip_path = m['video_info']['variants'].map { |x| x['url'] }.select { |u| u =~ /\/vid\// }.map { |x| find_media("#{tweet['id_str']}*#{x.split('/').select { |p| p =~ /^[a-zA-Z\-_0-9]+\....(\?.+)?$/ }[0].split('.')[0]}") }.compact[0]
               item['thumbnail'] = m['media_url']
             when 'animated_gif'
               item['type'] = 'video'
@@ -301,7 +317,7 @@ class TouitrParser
                   info['link']['image'] = og['og:image']
                 end
               end
-            rescue URI::InvalidURIError
+            rescue URI::InvalidURIError, OpenSSL::SSL::SSLError
             end
           end
         end
@@ -309,6 +325,7 @@ class TouitrParser
         puts e.backtrace
         puts "#{e} #{e.class}"
         # binding.pry
+        raise e
       end
 
       res << info

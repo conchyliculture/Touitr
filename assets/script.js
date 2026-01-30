@@ -7,6 +7,7 @@ let currentIndex = 0;
 let isLoading = false;
 let searchQuery = "";
 let filteredPosts = [];
+let base_url = ""; // Edit this if you host this not at the root of a VirtualHost
 
 // DOM elements
 const timeline = document.getElementById("timeline");
@@ -166,13 +167,13 @@ function createPostHTML(post) {
             <div class="media-grid ${post.media.length > 1 ? `grid-${post.media.length}` : ''}">
                 ${post.media.map((media, index) => {
                     if (media.type === 'image') {
-                        return `<img src="${media.url}" alt="Post media" loading="lazy">`;
+                        return `<img src="${base_url}${media.url}" alt="Post media" loading="lazy">`;
                     } else if (media.type === 'video') {
                         return `
-                    <video src='${media.url}' controls='true' autoplay='false' preload='metadata' class='video-player'></video>
+                    <video src='${base_url}${media.url}' controls='true' autoplay='false' preload='metadata' class='video-player'></video>
                         `;
                     } else {
-                        return `<img src="${media.url}" alt="Post media" loading="lazy">`;
+                        return `<img src="${base_url}${media.url}" alt="Post media" loading="lazy">`;
                     }
                 }).join('')}
             </div>
@@ -194,7 +195,7 @@ function createPostHTML(post) {
 
     const linkPreviewHTML = post.link ? `
         <a href="${post.link.url}" target="_blank" rel="noopener noreferrer" class="link-preview">
-            ${post.link.image ? `<img src="${post.link.image}" alt="${post.link.title}" class="link-preview-image" loading="lazy">` : ''}
+            ${post.link.image ? `<img src="${base_url}${post.link.image}" alt="${post.link.title}" class="link-preview-image" loading="lazy">` : ''}
             <div class="link-preview-content">
                 <div class="link-preview-domain">${post.link.domain}</div>
                 <div class="link-preview-title">${post.link.title}</div>
@@ -213,7 +214,7 @@ function createPostHTML(post) {
             ${replyHTML}
             <div class="post-header">
                 <a href='https://twitter.com/${post.author}' class="avatar">
-                <img src="${post.avatar}" alt="${post.author.slice(0,3)}" class="avatar" loading="lazy">
+                <img src="${base_url}${post.avatar}" alt="${post.author.slice(0,3)}" class="avatar" loading="lazy">
                 </a>
                 <div class="post-info">
                     <div class="post-author">
