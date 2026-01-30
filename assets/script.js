@@ -169,15 +169,7 @@ function createPostHTML(post) {
                         return `<img src="${media.url}" alt="Post media" loading="lazy">`;
                     } else if (media.type === 'video') {
                         return `
-                            <div class="video-container" data-video-url="${media.url}">
-                                <img src="${media.thumbnail}" alt="Video thumbnail" loading="lazy" class="video-thumbnail">
-                                <div class="video-play-button">
-                                    <svg viewBox="0 0 24 24" width="48" height="48">
-                                        <circle cx="12" cy="12" r="11" fill="rgba(0,0,0,0.7)" stroke="white" stroke-width="1"/>
-                                        <polygon points="9,7 9,17 17,12" fill="white"/>
-                                    </svg>
-                                </div>
-                            </div>
+                    <video src='${media.url}' controls='true' autoplay='false' preload='metadata' class='video-player'></video>
                         `;
                     } else {
                         return `<img src="${media.url}" alt="Post media" loading="lazy">`;
@@ -343,24 +335,6 @@ clearSearch.addEventListener('click', () => {
     searchInput.value = '';
     searchPosts('');
     searchInput.focus();
-});
-
-// Handle video play clicks
-document.addEventListener('click', (e) => {
-    const videoContainer = e.target.closest('.video-container');
-    if (videoContainer) {
-        const videoUrl = videoContainer.getAttribute('data-video-url');
-        
-        // Replace the container with an actual video element
-        const video = document.createElement('video');
-        video.src = videoUrl;
-        video.controls = true;
-        video.autoplay = true;
-        video.preload = 'metadata';
-        video.className = 'video-player';
-        
-        videoContainer.replaceWith(video);
-    }
 });
 
 // Initialize - load posts from JSON file
