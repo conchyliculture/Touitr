@@ -321,10 +321,16 @@ class TouitrParser
   end
 end
 
-t = TouitrParser.new(ARGV[0], ARGV[1])
+dest_dir = ARGV[1]
+t = TouitrParser.new(ARGV[0], dest_dir)
+#t.tweets_to_json
 
-t.tweets_to_json
+FileUtils.cp('assets/script.js', File.join(dest_dir, "/"))
+FileUtils.cp('assets/styles.css', File.join(dest_dir, "/"))
 
-FileUtils.cp('assets/script.js', File.join(ARGV[1], "/"))
-FileUtils.cp('assets/index.html', File.join(ARGV[1], "/"))
-FileUtils.cp('assets/styles.css', File.join(ARGV[1], "/"))
+index = File.read('assets/index.html')
+index.gsub!('PLACEHOLDER-TITLE', "#{t.get_archive_username}'s Timeline")
+index.gsub!('PLACEHOLDER-H1', "Timeline of #{t.get_archive_displayname}")
+i = File.open(File.join(dest_dir, 'index.html'), 'w')
+i.write(index)
+i.close
