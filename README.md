@@ -8,6 +8,11 @@ Generates a folder with a statified Twitter-like clone.
 | 🚨🚨 ALL THE HTML/CSS/JAVASCRIPT PART IS 99% VIBECODED 🚨🚨    |
 
 
+Features:
+ * Only one JS file for lazyloading basically
+ * Can share a link to a specific post
+ * Resolves all the silly `t.co` links
+
 ![screenshot of the output](screenshot.jpg)
 
 ## Install
