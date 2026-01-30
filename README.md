@@ -37,3 +37,11 @@ $ cd <destination_folder> ; ruby -run -e httpd . -p 8000
 ```
 
 And point your browser to `http://localhost:8000`
+
+## Host this somewhere
+
+if you want to host this on `https://example.com/touitr`, edit script.js with:
+
+```
+let base_url = "https://example.com/touitr"; // Edit this if you host this not at the root of a VirtualHost
+```
