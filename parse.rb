@@ -321,6 +321,10 @@ class TouitrParser
   end
 end
 
-t = TouitrParser.new(ARGV[0], 'assets')
+t = TouitrParser.new(ARGV[0], ARGV[1])
 
 t.tweets_to_json
+
+FileUtils.cp('assets/script.js', File.join(ARGV[1], "/"))
+FileUtils.cp('assets/index.html', File.join(ARGV[1], "/"))
+FileUtils.cp('assets/styles.css', File.join(ARGV[1], "/"))
