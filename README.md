@@ -12,6 +12,7 @@ Features:
  * Only one JS file for lazyloading basically
  * Can share a link to a specific post
  * Resolves all the silly `t.co` links
+ * Has a working search bar
 
 ![screenshot of the output](screenshot.jpg)
 
