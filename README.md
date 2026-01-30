@@ -1,5 +1,6 @@
 # Touitr
-Parse your Twitter archive and make it less shitty.
+Parse your Twitter archive and build a less shitty version of your Timeline.
+
 
 Generates a folder with a statified Twitter-like clone.
 
@@ -13,6 +14,7 @@ Features:
  * Can share a link to a specific post
  * Resolves all the silly `t.co` links
  * Has a working search bar
+ * Only show the timeline of your post, RT, replies, all one one place
 
 ![screenshot of the output](screenshot.jpg)
 
