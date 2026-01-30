@@ -277,7 +277,6 @@ class TouitrParser
           info["replyToAuthor"] = qrt_from_url.split('/')[3]
         end
 
-
         info['content'] = clean_tweet_content(tweet)
 
         if (tweet['entities'] || {})['urls'] and not tweet['entities']['urls'].empty?
@@ -309,7 +308,7 @@ class TouitrParser
       rescue StandardError => e
         puts e.backtrace
         puts "#{e} #{e.class}"
-        binding.pry
+        # binding.pry
       end
 
       res << info
@@ -323,7 +322,7 @@ end
 
 dest_dir = ARGV[1]
 t = TouitrParser.new(ARGV[0], dest_dir)
-#t.tweets_to_json
+t.tweets_to_json
 
 FileUtils.cp('assets/script.js', File.join(dest_dir, "/"))
 FileUtils.cp('assets/styles.css', File.join(dest_dir, "/"))
