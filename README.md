@@ -3,6 +3,11 @@ Parse your Twitter archive and make it less shitty.
 
 Generates a folder with a statified Twitter-like clone.
 
+| :warning: WARNING           |
+|:----------------------------|
+| 🚨🚨 ALL THE HTML/CSS/JAVASCRIPT PART IS 99% VIBECODED 🚨🚨    |
+
+
 ## Install
 
 ```
