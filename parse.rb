@@ -345,8 +345,7 @@ FileUtils.cp('assets/script.js', File.join(dest_dir, "/"))
 FileUtils.cp('assets/styles.css', File.join(dest_dir, "/"))
 
 index = File.read('assets/index.html')
-index.gsub!('PLACEHOLDER-TITLE', "#{t.get_archive_username}'s Timeline")
-index.gsub!('PLACEHOLDER-H1', "Timeline of #{t.get_archive_displayname}")
+index.gsub!('PLACEHOLDER-TITLE', "@#{t.get_archive_username} Twitter Archive")
 i = File.open(File.join(dest_dir, 'index.html'), 'w')
 i.write(index)
 i.close
