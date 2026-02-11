@@ -50,7 +50,7 @@ class TouitrParser
     @og_cache_path = File.join(CACHE_DIR, 'meta-og')
     @og_cache = {}
     if File.exist?(@og_cache_path)
-      @og_cache = JSON.parse(File.read(@og_cache_path))
+      @og_cache = JSON.parse(File.read(@og_cache_path, encoding: Encoding::UTF_8))
     end
   end
 
