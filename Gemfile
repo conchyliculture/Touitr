@@ -3,6 +3,7 @@
 source "https://rubygems.org"
 
 gem "mechanize"
+gem "mustache"
 gem "nokogiri"
 gem "pry"
 gem "rubocop"

@@ -7,7 +7,9 @@ let currentIndex = 0;
 let isLoading = false;
 let searchQuery = "";
 let filteredPosts = [];
-let base_url = ""; // Edit this if you host this not at the root of a VirtualHost
+let base_url = "PLACEHOLDER_BASE_URL"; // Edit this if you host this not at the root of a VirtualHost
+
+const POST_TEMPLATE = `PLACEHOLDER_POST_TEMPLATE`
 
 // DOM elements
 const timeline = document.getElementById("timeline");
@@ -83,47 +85,6 @@ async function loadPostsData() {
         filteredPosts = [...allPosts];
         
         // Check if there's a hash in the URL
-        if (window.location.hash) {
-            const targetId = window.location.hash.replace('#post-', '');
-            const targetIndex = allPosts.findIndex(p => p.id == targetId);
-            
-            if (targetIndex !== -1) {
-                // Load only the target post
-                const targetPost = allPosts[targetIndex];
-                timeline.insertAdjacentHTML('beforeend', createPostHTML(targetPost));
-                
-                // Add a "View full timeline" button
-                const returnButton = document.createElement('div');
-                returnButton.className = 'return-to-timeline';
-                returnButton.innerHTML = `
-                    <a href="${window.location.pathname}" class="return-button">
-                        ← View full timeline
-                    </a>
-                `;
-                timeline.insertBefore(returnButton, timeline.firstChild);
-                
-                // Use requestAnimationFrame to ensure the DOM is updated before scrolling
-                requestAnimationFrame(() => {
-                    requestAnimationFrame(() => {
-                        const targetElement = document.getElementById(window.location.hash.substring(1));
-                        if (targetElement) {
-                            // Scroll to show the post properly
-                            targetElement.scrollIntoView({ behavior: 'auto', block: 'start' });
-                            // Add highlight effect
-                            targetElement.style.backgroundColor = 'rgba(29, 155, 240, 0.1)';
-                            setTimeout(() => {
-                                targetElement.style.backgroundColor = '';
-                            }, 2000);
-                        }
-                    });
-                });
-                
-                // Hide the loading indicator
-                loading.style.display = 'none';
-                
-                return;
-            }
-        }
         
         // Normal initialization without anchor
         loadPosts();
@@ -161,87 +122,46 @@ function linkifyText(text) {
 }
 
 // Create post HTML
+
+ // Create post HTML using Mustache
 function createPostHTML(post) {
-    const mediaHTML = post.media ? `
-        <div class="post-media">
-            <div class="media-grid ${post.media.length > 1 ? `grid-${post.media.length}` : ''}">
-                ${post.media.map((media, index) => {
-                    if (media.type === 'image') {
-                        return `<img src="${base_url}${media.url}" alt="Post media" loading="lazy">`;
-                    } else if (media.type === 'video') {
-                        return `
-                    <video src='${base_url}${media.url}' controls='true' autoplay='false' preload='metadata' class='video-player'></video>
-                        `;
-                    } else {
-                        return `<img src="${base_url}${media.url}" alt="Post media" loading="lazy">`;
-                    }
-                }).join('')}
-            </div>
-        </div>
-    ` : '';
-
-    const retweetHTML = post.isRetweet ? `
-        <div class="retweet-indicator">
-            <span class="retweet-icon">🔄</span>
-            <span>${post.retweetedBy} Retweeted</span>
-        </div>
-    ` : '';
-
-    const replyHTML = post.replyTo ? `
-        <div class="reply-indicator">
-            <span>Replying to <a href="${post.replyTo}" class="reply-link">@${post.replyToAuthor}</a></span>
-        </div>
-    ` : '';
-
-    const linkPreviewHTML = post.link ? `
-        <a href="${post.link.url}" target="_blank" rel="noopener noreferrer" class="link-preview">
-            ${post.link.image ? `<img src="${base_url}${post.link.image}" alt="${post.link.title}" class="link-preview-image" loading="lazy">` : ''}
-            <div class="link-preview-content">
-                <div class="link-preview-domain">${post.link.domain}</div>
-                <div class="link-preview-title">${post.link.title}</div>
-                <div class="link-preview-description">${post.link.description}</div>
-            </div>
-        </a>
-    ` : '';
-
-    // First linkify URLs, then apply search highlighting
+    // 1. Process Content (Highlighting)
     let processedContent = post.content;
     processedContent = highlightText(processedContent, searchQuery);
 
-    return `
-        <article class="post" id="post-${post.id}" data-post-id="${post.id}">
-            ${retweetHTML}
-            ${replyHTML}
-            <div class="post-header">
-                <a href='https://twitter.com/${post.author}' class="avatar">
-                <img src="${base_url}${post.avatar}" alt="${post.author.slice(0,3)}" class="avatar" loading="lazy">
-                </a>
-                <div class="post-info">
-                    <div class="post-author">
-                        <span class="author-name"><a href='https://twitter.com/${post.author}'>${post.author}</a></span>
-                        <span class="author-handle"><a href='https://twitter.com/${post.handle}'>@${post.handle}</a></span>
-                        <span class="post-date-separator">·</span>
-                        <a href="#post-${post.id}" class="post-date" title="${formatFullTimestamp(post.timestamp)}">${formatDate(post.timestamp)}</a>
-                        <span class="post-date-separator">·</span>
-                        <a href="https://twitter.com/${post.handle}/status/${post.id}" class="origlink">View original on Twitter</a>
-                    </div>
-                    <div class="post-content">${processedContent}</div>
-                    ${linkPreviewHTML}
-                    ${mediaHTML}
-                    <div class="post-actions">
-                        <div class="action-btn">
-                            <span>🔄</span>
-                            <span>${formatNumber(post.retweets)}</span>
-                        </div>
-                        <div class="action-btn">
-                            <span>❤️</span>
-                            <span>${formatNumber(post.likes)}</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </article>
-    `;
+    // 2. Process Media for Mustache (adding booleans for logic-less rendering)
+    const hasMedia = post.media && post.media.length > 0;
+    const mediaGridClass = hasMedia && post.media.length > 1 ? `grid-${post.media.length}` : '';
+   
+    let processedMedia = [];
+    if (hasMedia) {
+        processedMedia = post.media.map(media => ({
+            ...media,
+            is_image: media.type === 'image' || media.type !== 'video', // Fallback to image
+            is_video: media.type === 'video'
+        }));
+    }
+
+    // 3. Construct the View Model
+    // We spread the original post object (...) to grab properties like id, handle, link, etc.,
+    // and then add our computed/formatted properties on top.
+    const viewData = {
+        ...post,
+        base_url: base_url,
+        link: post.link,
+        author_short: post.author ? post.author.slice(0, 3) : '',
+        full_timestamp: formatFullTimestamp(post.timestamp),
+        formatted_date: formatDate(post.timestamp),
+        processedContent: processedContent,
+        has_media: hasMedia,
+        media_grid_class: mediaGridClass,
+        media: processedMedia, // Overrides the raw post.media array
+        formatted_retweets: formatNumber(post.retweets),
+        formatted_likes: formatNumber(post.likes)
+    };
+
+    // 4. Render the Template
+    return Mustache.render(POST_TEMPLATE, viewData);
 }
 
 // Load posts

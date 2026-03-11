@@ -1,19 +1,31 @@
 require 'json'
 require 'mechanize'
+require 'mustache'
+
 require "logger"
 require 'net/http'
 require 'nokogiri'
 require 'pry'
+require 'time'
 require 'timeout'
 require 'zip'
+
+HEADER_TEMPLATE = File.read("templates/header.mustache")
+POST_TEMPLATE = File.read("templates/post.mustache")
+INDEX_TEMPLATE = File.read("templates/index.mustache")
+FOOTER_TEMPLATE = File.read("templates/footer.mustache")
 
 class TouitrParser
   CACHE_DIR = '.cache'.freeze
   IMAGES_DIR_NAME = 'images'.freeze
   TWITTER_HOST = 'fxtwitter.com'.freeze
 
-  def initialize(zip_file, destination_directory)
+  attr_accessor :archive_owner
+
+  def initialize(zip_file, destination_directory, config)
     raise StandardError, "Please specify an existing zipfile" unless zip_file
+
+    @config = config
 
     @log = Logger.new($stdout)
     @log.level = $VERBOSE ? Logger::DEBUG : Logger::WARN
@@ -21,6 +33,11 @@ class TouitrParser
     @destination_directory = destination_directory
     unless Dir.exist?(@destination_directory)
       Dir.mkdir(@destination_directory)
+    end
+
+    @posts_directory = File.join(destination_directory, 'post')
+    unless Dir.exist?(@posts_directory)
+      Dir.mkdir(@posts_directory)
     end
 
     @pics_directory = File.join(@destination_directory, IMAGES_DIR_NAME)
@@ -35,6 +52,8 @@ class TouitrParser
     unless Dir.exist?(CACHE_DIR)
       Dir.mkdir(CACHE_DIR)
     end
+
+    @archive_owner = {}
 
     @tco_links_cache_path = File.join(CACHE_DIR, 'links')
     @tco_links_cache = {}
@@ -52,6 +71,7 @@ class TouitrParser
     if File.exist?(@og_cache_path)
       @og_cache = JSON.parse(File.read(@og_cache_path, encoding: Encoding::UTF_8))
     end
+
   end
 
   def update_og_cache(url, type, value)
@@ -88,6 +108,29 @@ class TouitrParser
     f = File.open(@tco_links_cache_path, 'w')
     f.write(JSON.pretty_generate(@tco_links_cache))
     f.close
+  end
+
+  def generate_post_opengraph(data)
+    og = ""
+
+    pp data
+    if data['media']
+      if data['media'][0]['type'] == 'video'
+        v = data['media'][0]
+        og += """
+      <meta property=\"og:type\" content=\"video.other\" />
+      <meta property=\"og:video\" content=\"#{@config['base_url']}/#{v['url']}\" />
+      <meta property=\"og:video:secure_url\" content=\"#{@config['base_url']}/#{v['url']}\" />
+      <meta property=\"og:video:type\" content=\"video/mp4\" />
+      <meta property=\"og:video:width\" content=\"640\" />
+      <meta property=\"og:video:height\" content=\"360\" />
+      <meta property=\"og:image\" content=\"#{v['thumbnail']}\" />
+      """
+      elsif data['media'][0]['type'] == 'image'
+      end
+    end
+    return og
+
   end
 
   def resolve_tco(url)
@@ -166,6 +209,87 @@ class TouitrParser
     return j
   end
 
+  def format_number(num)
+    return "#{(num.to_i / 1_000.0).round(1)}K" if num.to_i >= 1_000
+
+    num.to_s
+  end
+
+  def generate_post_file(post)
+    has_media = post["media"] && !post["media"].empty?
+    media_grid_class = has_media && post["media"].length > 1 ? "grid-#{post['media'].length}" : ""
+
+    processed_media = []
+    if has_media
+      processed_media = post["media"].map do |m|
+        # Mustache needs explicit booleans for conditionals
+        is_image = m["type"] == 'image' || m["type"] != 'video' # default fallback to image
+        is_video = m["type"] == 'video'
+
+        m.merge(is_image: is_image, is_video: is_video)
+      end
+    end
+
+    processed_content = post["content"]
+
+    view_data = {
+      base_url: @config["base_url"],
+      id: post["id"],
+      isRetweet: post["isRetweet"],
+      retweetedBy: post["retweetedBy"],
+      replyTo: post["replyTo"],
+      replyToAuthor: post["replyToAuthor"],
+      author: post["author"],
+      author_short: post["author"].to_s[1, 3],
+      handle: post["handle"],
+      avatar: post["avatar"],
+      full_timestamp: format_full_timestamp(post["timestamp"]),
+      formatted_date: format_date(post["timestamp"]),
+      processedContent: processed_content,
+      link: post["link"],
+      has_media: has_media,
+      media_grid_class: media_grid_class,
+      media: processed_media,
+      formatted_retweets: format_number(post["retweets"]),
+      formatted_likes: format_number(post["likes"])
+    }
+
+    # 4. Render!
+    html_output = Mustache.render(
+      HEADER_TEMPLATE, {
+        'handle' => @archive_owner['handle'],
+        'isPost' => true,
+        'base_url' => @config['base_url'],
+        'post_opengraph' => generate_post_opengraph(post)
+      }
+    )
+    html_output += "\n"
+    html_output += Mustache.render(POST_TEMPLATE, view_data)
+    html_output += "\n"
+    html_output += Mustache.render(FOOTER_TEMPLATE, @config)
+
+    f = File.new(File.join(@posts_directory, "#{post['id']}.html"), 'w')
+    f.write(html_output)
+    f.close
+
+  end
+
+  def self.highlight_text(text, query)
+    return text if query.nil? || query.empty?
+    # Simple regex substitution matching the JS logic
+    text.gsub(/(#{Regexp.escape(query)})/i, '<span class="highlight">\1</span>')
+  end
+
+  def format_date(timestamp)
+    # Placeholder: Implement your Ruby date formatting here
+    Time.parse(timestamp).strftime('%b %-d')
+  end
+
+  def format_full_timestamp(timestamp)
+    # Placeholder: Implement your Ruby full date formatting here
+    Time.parse(timestamp).strftime('%b %-d, %Y, %I:%M %p')
+  end
+
   def clean_tweet_content(tweet)
     tweet['full_text'] = tweet['full_text'].gsub(/https:\/\/t.co\/[^\s]{10}/) do |x|
       d = resolve_tco(x)
@@ -193,7 +317,7 @@ class TouitrParser
   end
 
   def tweets_to_json
-    archive_owner = {
+    @archive_owner = {
       'handle' => get_archive_username(),
       'displayname' => get_archive_displayname(),
       'avatar' => get_archive_avatar(),
@@ -202,17 +326,17 @@ class TouitrParser
     res = []
     all_tweets = javascript_to_json('data/tweets.js')
     @log.info("Will convert #{all_tweets.size} tweets")
-    all_tweets.each do |t|
+    all_tweets[0..20].each do |t|
       tweet = t['tweet']
 
       begin
         info = {
-          'avatar' => archive_owner['avatar'],
+          'avatar' => @archive_owner['avatar'],
           'replies' => 0,
           'retweets' => tweet['retweet_count'],
           'likes' => tweet['favorite_count'],
-          'author' => archive_owner['displayname'],
-          'handle' => archive_owner['handle'],
+          'author' => @archive_owner['displayname'],
+          'handle' => @archive_owner['handle'],
           "id" => tweet['id'],
           "timestamp" => tweet['created_at'],
           "type" => tweet['type'] || 'default'
@@ -220,16 +344,16 @@ class TouitrParser
 
         if tweet['full_text'].start_with?('RT @')
           info['isRetweet'] = true
-          info['retweetedBy'] = archive_owner['displayname']
+          info['retweetedBy'] = @archive_owner['displayname']
           info['avatar'] = ''
           info['author'] = tweet['full_text'].scan(/RT @([^\s]+):/)[0][0]
           info['handle'] = info['author']
           tweet['full_text'] = tweet['full_text'].delete_prefix("RT @#{info['author']}: ")
         elsif tweet['in_reply_to_status_id'] =~ /^\d+$/
           reply_to_id = tweet['in_reply_to_user_id_str']
-          if reply_to_id == archive_owner['id']
-            info["replyTo"] = build_twitter_link(handle: archive_owner['handle'], tweet_id: tweet['in_reply_to_status_id'])
-            info["replyToAuthor"] = archive_owner['handle']
+          if reply_to_id == @archive_owner['id']
+            info["replyTo"] = build_twitter_link(handle: @archive_owner['handle'], tweet_id: tweet['in_reply_to_status_id'])
+            info["replyToAuthor"] = @archive_owner['handle']
           else
             reply_to_ent = tweet['entities']['user_mentions'].select { |um| um['id'] == reply_to_id }[0]
             if reply_to_ent
@@ -328,6 +452,8 @@ class TouitrParser
         raise e
       end
 
+      generate_post_file(info)
+
       res << info
     end
 
@@ -337,15 +463,30 @@ class TouitrParser
   end
 end
 
+config  = JSON.parse(File.read("config.json"))
+
 dest_dir = ARGV[1]
-t = TouitrParser.new(ARGV[0], dest_dir)
+t = TouitrParser.new(ARGV[0], dest_dir, config)
 t.tweets_to_json
 
-FileUtils.cp('assets/script.js', File.join(dest_dir, "/"))
-FileUtils.cp('assets/styles.css', File.join(dest_dir, "/"))
+FileUtils.cp('assets/styles.css', File.join(dest_dir, '/'))
 
-index = File.read('assets/index.html')
-index.gsub!('PLACEHOLDER-TITLE', "@#{t.get_archive_username} Twitter Archive")
+index = Mustache.render(
+  HEADER_TEMPLATE, {
+    'handle' => t.archive_owner['handle'],
+    'base_url' => config['base_url']
+  }
+)
+index += Mustache.render(INDEX_TEMPLATE)
+index += Mustache.render(FOOTER_TEMPLATE)
+
 i = File.open(File.join(dest_dir, 'index.html'), 'w')
 i.write(index)
+i.close
+
+script = File.read('assets/script.js')
+script.gsub!('PLACEHOLDER_POST_TEMPLATE', File.read('templates/post.mustache'))
+script.gsub!('PLACEHOLDER_BASE_URL', config['base_url'])
+i = File.open(File.join(dest_dir, 'script.js'), 'w')
+i.write(script)
 i.close

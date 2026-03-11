@@ -1,0 +1,27 @@
+
+            <div class="search-container">
+                <input 
+                    type="text" 
+                    id="searchInput" 
+                    class="search-input" 
+                    placeholder="Search posts..."
+                >
+                <button id="clearSearch" class="clear-btn" style="display: none;">✕</button>
+            </div>
+        </header>
+
+        <main class="timeline" id="timeline">
+            <!-- Posts will be dynamically inserted here -->
+        </main>
+
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p>Loading more posts...</p>
+        </div>
+
+        <div id="noResults" class="no-results" style="display: none;">
+            <p>No posts found matching your search.</p>
+        </div>
+    </div>
+
+    <script src="/script.js"></script>

@@ -3,15 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PLACEHOLDER-TITLE</title>
-    <link rel="stylesheet" href="styles.css">
+    <title>@{{handle}}'s Twitter Archive</title>
+    <link rel="stylesheet" href="{{base_url}}/styles.css">
+    <meta property="og:title" content="@{{handle}}'s Twitter Archive" />
+    {{#isPost}}
+      {{{post_opengraph}}}
+    {{/isPost}}
+    {{^isPost}}
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="{{base_url}}" />
+    {{/isPost}}
+
 </head>
 <body>
-        <script src="https://unpkg.com/mustache@latest"></script>
+    <script src="https://unpkg.com/mustache@latest"></script>
     <!-- Info Box -->
     <div class="info-box">
         <div class="info-box-header">
-            <h2>PLACEHOLDER-TITLE</h2>
+            <h2>@{{handle}}'s Twitter Archive</h2>
         </div>
         <div class="info-box-content">
             <div class="social-links">
@@ -27,31 +36,10 @@
 
     <div class="container">
         <header class="header">
-            <div class="search-container">
-                <input 
-                    type="text" 
-                    id="searchInput" 
-                    class="search-input" 
-                    placeholder="Search posts..."
-                >
-                <button id="clearSearch" class="clear-btn" style="display: none;">✕</button>
-            </div>
-        </header>
-
-        <main class="timeline" id="timeline">
-            <!-- Posts will be dynamically inserted here -->
-        </main>
-
-        <div id="loading" class="loading">
-            <div class="spinner"></div>
-            <p>Loading more posts...</p>
-        </div>
-
-        <div id="noResults" class="no-results" style="display: none;">
-            <p>No posts found matching your search.</p>
-        </div>
-    </div>
-
-    <script src="/script.js"></script>
-</body>
-</html>
+        {{#isPost}}
+                    <div class="return-to-timeline">
+                    <a href="{{base_url}}" class="return-button">
+                        ← View full timeline
+                    </a>
+                    </div>
+         {{/isPost}}
