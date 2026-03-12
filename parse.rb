@@ -113,7 +113,8 @@ class TouitrParser
     og = "<meta property=\"og:url\" content=\"#{@base_url}/post/#{data['id']}\" />"
 
     if data['media']
-      if data['media'][0]['type'] == 'video'
+      case data['media'][0]['type']
+      when 'video'
         v = data['media'][0]
         og += "
       <meta property=\"og:type\" content=\"video.other\" />
@@ -124,7 +125,7 @@ class TouitrParser
       <meta property=\"og:video:height\" content=\"360\" />
       <meta property=\"og:image\" content=\"#{v['thumbnail']}\" />
       "
-      elsif data['media'][0]['type'] == 'photo'
+      when 'photo'
         i = data['media'][0]
         og += "
       <meta property=\"og:type\" content=\"image.other\" />
