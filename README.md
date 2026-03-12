@@ -29,21 +29,17 @@ $ bundle config set path 'vendor/bundle' ; bundle install
 Go to Twitter and export your data. Wait for a day, and then download the .zip
 
 ```
-$ bundle exec ruby parse.rb <twitter_archive.zip> <destination_folder>
+$ bundle exec ruby parse.rb --archive <twitter_archive.zip> -d <destination_dir>  -b http://localhost:8080
 ```
 
 and done! Check out your new website:
 
 ```
-$ cd <destination_folder> ; ruby -run -e httpd . -p 8000
+$ cd <destination_dir> ; ruby -run -e httpd . -p 8000
 ```
 
 And point your browser to `http://localhost:8000`
 
-## Host this somewhere
+## Use config.json
 
-if you want to host this on `https://example.com/touitr`, edit script.js with:
-
-```
-let base_url = "https://example.com/touitr"; // Edit this if you host this not at the root of a VirtualHost
-```
+You can also use a config.json file to store parameters

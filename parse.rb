@@ -1,10 +1,11 @@
+require 'pry'
 require 'json'
+require "logger"
 require 'mechanize'
 require 'mustache'
-
-require "logger"
 require 'net/http'
 require 'nokogiri'
+require 'optparse'
 require 'pry'
 require 'time'
 require 'timeout'
@@ -14,18 +15,18 @@ HEADER_TEMPLATE = File.read("templates/header.mustache")
 POST_TEMPLATE = File.read("templates/post.mustache")
 INDEX_TEMPLATE = File.read("templates/index.mustache")
 FOOTER_TEMPLATE = File.read("templates/footer.mustache")
+TWITTER_HOST = 'twitter.com' # You may replace this with another twitter redirector, like fxtwitter.com
 
 class TouitrParser
   CACHE_DIR = '.cache'.freeze
   IMAGES_DIR_NAME = 'images'.freeze
-  TWITTER_HOST = 'fxtwitter.com'.freeze
 
   attr_accessor :archive_owner
 
-  def initialize(zip_file, destination_directory, config)
+  def initialize(zip_file, destination_directory, base_url)
     raise StandardError, "Please specify an existing zipfile" unless zip_file
 
-    @config = config
+    @base_url = base_url
 
     @log = Logger.new($stdout)
     @log.level = $VERBOSE ? Logger::DEBUG : Logger::WARN
@@ -71,7 +72,6 @@ class TouitrParser
     if File.exist?(@og_cache_path)
       @og_cache = JSON.parse(File.read(@og_cache_path, encoding: Encoding::UTF_8))
     end
-
   end
 
   def update_og_cache(url, type, value)
@@ -111,26 +111,29 @@ class TouitrParser
   end
 
   def generate_post_opengraph(data)
-    og = ""
+    og = "<meta property=\"og:url\" content=\"#{@base_url}/post/#{data['id']}\" />"
 
-    pp data
     if data['media']
       if data['media'][0]['type'] == 'video'
         v = data['media'][0]
-        og += """
+        og += "
       <meta property=\"og:type\" content=\"video.other\" />
-      <meta property=\"og:video\" content=\"#{@config['base_url']}/#{v['url']}\" />
-      <meta property=\"og:video:secure_url\" content=\"#{@config['base_url']}/#{v['url']}\" />
+      <meta property=\"og:video\" content=\"#{@base_url}/#{v['url']}\" />
+      <meta property=\"og:video:secure_url\" content=\"#{@base_url}/#{v['url']}\" />
       <meta property=\"og:video:type\" content=\"video/mp4\" />
       <meta property=\"og:video:width\" content=\"640\" />
       <meta property=\"og:video:height\" content=\"360\" />
       <meta property=\"og:image\" content=\"#{v['thumbnail']}\" />
-      """
-      elsif data['media'][0]['type'] == 'image'
+      "
+      elsif data['media'][0]['type'] == 'photo'
+        i = data['media'][0]
+        og += "
+      <meta property=\"og:type\" content=\"image.other\" />
+      <meta property=\"og:image\" content=\"#{@base_url}/#{i['url']}\" />
+      "
       end
     end
     return og
-
   end
 
   def resolve_tco(url)
@@ -233,7 +236,7 @@ class TouitrParser
     processed_content = post["content"]
 
     view_data = {
-      base_url: @config["base_url"],
+      base_url: @base_url,
       id: post["id"],
       isRetweet: post["isRetweet"],
       retweetedBy: post["retweetedBy"],
@@ -259,23 +262,23 @@ class TouitrParser
       HEADER_TEMPLATE, {
         'handle' => @archive_owner['handle'],
         'isPost' => true,
-        'base_url' => @config['base_url'],
+        'base_url' => @base_url,
         'post_opengraph' => generate_post_opengraph(post)
       }
     )
     html_output += "\n"
     html_output += Mustache.render(POST_TEMPLATE, view_data)
     html_output += "\n"
-    html_output += Mustache.render(FOOTER_TEMPLATE, @config)
+    html_output += Mustache.render(FOOTER_TEMPLATE, {})
 
     f = File.new(File.join(@posts_directory, "#{post['id']}.html"), 'w')
     f.write(html_output)
     f.close
-
   end
 
   def self.highlight_text(text, query)
     return text if query.nil? || query.empty?
+
     # Simple regex substitution matching the JS logic
     text.gsub(/(#{Regexp.escape(query)})/i, '<span class="highlight">\1</span>')
   end
@@ -316,7 +319,7 @@ class TouitrParser
     return tweet['full_text']
   end
 
-  def tweets_to_json
+  def parse_archive
     @archive_owner = {
       'handle' => get_archive_username(),
       'displayname' => get_archive_displayname(),
@@ -463,30 +466,81 @@ class TouitrParser
   end
 end
 
-config  = JSON.parse(File.read("config.json"))
+def generate_index(params)
+  index_html = Mustache.render(HEADER_TEMPLATE, params)
+  index_html += Mustache.render(INDEX_TEMPLATE, params)
+  index_html += Mustache.render(FOOTER_TEMPLATE, params)
+  return index_html
+end
 
-dest_dir = ARGV[1]
-t = TouitrParser.new(ARGV[0], dest_dir, config)
-t.tweets_to_json
+def generate_scriptjs(params)
+  script = File.read('assets/script.js')
+  script.gsub!('PLACEHOLDER_POST_TEMPLATE', File.read('templates/post.mustache'))
+  script.gsub!('PLACEHOLDER_BASE_URL', params['base_url'])
+end
 
-FileUtils.cp('assets/styles.css', File.join(dest_dir, '/'))
+config_file = "config.json"
+config = {}
 
-index = Mustache.render(
-  HEADER_TEMPLATE, {
-    'handle' => t.archive_owner['handle'],
-    'base_url' => config['base_url']
-  }
-)
-index += Mustache.render(INDEX_TEMPLATE)
-index += Mustache.render(FOOTER_TEMPLATE)
+parser = OptionParser.new
+parser.on('-c CONFIG_FILE', '--config CONFIG_FILE', '(Optional) Point to a specific config.json file') do |value|
+  config_file = value
+end
+if File.exist?(config_file)
+  config = JSON.parse(File.read(config_file))
+end
 
-i = File.open(File.join(dest_dir, 'index.html'), 'w')
-i.write(index)
-i.close
+output_directory = config['output_directory'] || '/tmp/touitr'
+archive_file = config['archive_file']
+base_url = config['base_url'] || '/'
 
-script = File.read('assets/script.js')
-script.gsub!('PLACEHOLDER_POST_TEMPLATE', File.read('templates/post.mustache'))
-script.gsub!('PLACEHOLDER_BASE_URL', config['base_url'])
-i = File.open(File.join(dest_dir, 'script.js'), 'w')
-i.write(script)
-i.close
+parser.on('-d DEST_DIR', '--destination DEST_DIR', 'Output directory for generated files') do |value|
+  output_directory = value
+end
+parser.on('-z ARCHIVE', '--archive ARCHIVE', 'The zip file from your Twitter export') do |value|
+  pp value
+  archive_file = value
+end
+parser.on('-b BASE_URL', '--base_url BASE_URL', 'The base URL where the generated files will be hosted. ie: https://your.website.test/somewhere') do |value|
+  base_url = value
+end
+
+parser.parse!
+
+unless base_url
+  puts "You need to specify a base_url. Set it to https://your.website.test/somewhere/"
+  puts parser.help
+  exit
+end
+
+unless File.exist?(archive_file.to_s)
+  puts "Archive file '#{archive_file}' doesn't seem too exist"
+  puts parser.help
+  exit
+end
+
+unless File.directory?(output_directory)
+  FileUtils.mkdir_p(output_directory)
+end
+
+t = TouitrParser.new(archive_file, output_directory, base_url)
+t.parse_archive
+
+FileUtils.cp('assets/styles.css', File.join(output_directory, '/'))
+
+index = File.open(File.join(output_directory, 'index.html'), 'w')
+index.write(generate_index(
+              {
+                'handle' => t.archive_owner['handle'],
+                'base_url' => base_url
+              }
+            ))
+index.close()
+
+script = File.open(File.join(output_directory, 'script.js'), 'w')
+script.write(generate_scriptjs(
+               {
+                 'base_url' => base_url
+               }
+             ))
+script.close
