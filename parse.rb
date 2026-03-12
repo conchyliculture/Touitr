@@ -6,7 +6,6 @@ require 'mustache'
 require 'net/http'
 require 'nokogiri'
 require 'optparse'
-require 'pry'
 require 'time'
 require 'timeout'
 require 'zip'
@@ -326,6 +325,7 @@ class TouitrParser
       'avatar' => get_archive_avatar(),
       'id' => get_archive_userid()
     }
+
     res = []
     all_tweets = javascript_to_json('data/tweets.js')
     @log.info("Will convert #{all_tweets.size} tweets")
