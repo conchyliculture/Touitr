@@ -329,7 +329,7 @@ class TouitrParser
     res = []
     all_tweets = javascript_to_json('data/tweets.js')
     @log.info("Will convert #{all_tweets.size} tweets")
-    all_tweets[0..20].each do |t|
+    all_tweets.each do |t|
       tweet = t['tweet']
 
       begin
@@ -498,7 +498,6 @@ parser.on('-d DEST_DIR', '--destination DEST_DIR', 'Output directory for generat
   output_directory = value
 end
 parser.on('-z ARCHIVE', '--archive ARCHIVE', 'The zip file from your Twitter export') do |value|
-  pp value
   archive_file = value
 end
 parser.on('-b BASE_URL', '--base_url BASE_URL', 'The base URL where the generated files will be hosted. ie: https://your.website.test/somewhere') do |value|
