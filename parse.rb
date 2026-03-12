@@ -526,6 +526,7 @@ t = TouitrParser.new(archive_file, output_directory, base_url)
 t.parse_archive
 
 FileUtils.cp('assets/styles.css', File.join(output_directory, '/'))
+FileUtils.cp('assets/mustache.js', File.join(output_directory, '/'))
 
 index = File.open(File.join(output_directory, 'index.html'), 'w')
 index.write(generate_index(
