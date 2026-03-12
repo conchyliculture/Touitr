@@ -96,11 +96,6 @@ async function loadPostsData() {
     }
 }
 
-// Load previous posts (for scrolling up from anchored post) - no longer needed
-function loadPreviousPosts(targetIndex) {
-    // Not used anymore
-}
-
 // Format number (e.g., 1234 -> 1.2K)
 function formatNumber(num) {
     if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
@@ -114,14 +109,6 @@ function highlightText(text, query) {
     const regex = new RegExp(`(${query})`, 'gi');
     return text.replace(regex, '<span class="highlight">$1</span>');
 }
-
-// Convert URLs in text to clickable links
-function linkifyText(text) {
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-    return text.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
-}
-
-// Create post HTML
 
  // Create post HTML using Mustache
 function createPostHTML(post) {
