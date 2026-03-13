@@ -18,6 +18,11 @@ const searchInput = document.getElementById("searchInput");
 const clearSearch = document.getElementById("clearSearch");
 const noResults = document.getElementById("noResults");
 
+// Join URL pieces
+function join_url(first, second) {
+  return `${first.replace(/\/+$/, '')}/${second.replace(/^\/+/, '')}`;
+}
+
 // Parse timestamp string in format "Mon Nov 03 20:07:11 +0000 2025"
 function parseTimestamp(timestampStr) {
     // Parse format: "Day Mon DD HH:MM:SS +0000 YYYY"
@@ -124,6 +129,7 @@ function createPostHTML(post) {
     if (hasMedia) {
         processedMedia = post.media.map(media => ({
             ...media,
+            media_url: join_url(post.base_url, media.url),
             is_image: media.type === 'image' || media.type !== 'video', // Fallback to image
             is_video: media.type === 'video'
         }));
@@ -135,6 +141,8 @@ function createPostHTML(post) {
     const viewData = {
         ...post,
         base_url: base_url,
+        avatar_url: post.avatar ? joinUrl(baseUrl, post.avatar) : null,
+        post_url: join_url(join_url(base_url, 'post'), post['id']+'.html'),
         link: post.link,
         author_short: post.author ? post.author.slice(0, 3) : '',
         full_timestamp: formatFullTimestamp(post.timestamp),

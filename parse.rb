@@ -16,6 +16,10 @@ INDEX_TEMPLATE = File.read("templates/index.mustache")
 FOOTER_TEMPLATE = File.read("templates/footer.mustache")
 TWITTER_HOST = 'twitter.com' # You may replace this with another twitter redirector, like fxtwitter.com
 
+def join_url(first, second)
+  "#{first.gsub(/\/+$/, '')}/#{second.sub(/^\/+/, '')}"
+end
+
 class TouitrParser
   CACHE_DIR = '.cache'.freeze
   IMAGES_DIR_NAME = 'images'.freeze
@@ -110,7 +114,8 @@ class TouitrParser
   end
 
   def generate_post_opengraph(data)
-    og = "<meta property=\"og:url\" content=\"#{@base_url}/post/#{data['id']}\" />"
+    content_url = join_url(join_url(@base_url, 'post'), "#{data['id']}.html")
+    og = "<meta property=\"og:url\" content=\"#{content_url}\" />"
 
     if data['media']
       case data['media'][0]['type']
@@ -118,8 +123,8 @@ class TouitrParser
         v = data['media'][0]
         og += "
       <meta property=\"og:type\" content=\"video.other\" />
-      <meta property=\"og:video\" content=\"#{@base_url}/#{v['url']}\" />
-      <meta property=\"og:video:secure_url\" content=\"#{@base_url}/#{v['url']}\" />
+      <meta property=\"og:video\" content=\"#{join_url(@base_url, v['url'])}\" />
+      <meta property=\"og:video:secure_url\" content=\"#{join_url(@base_url, v['url'])}\" />
       <meta property=\"og:video:type\" content=\"video/mp4\" />
       <meta property=\"og:video:width\" content=\"640\" />
       <meta property=\"og:video:height\" content=\"360\" />
@@ -129,7 +134,7 @@ class TouitrParser
         i = data['media'][0]
         og += "
       <meta property=\"og:type\" content=\"image.other\" />
-      <meta property=\"og:image\" content=\"#{@base_url}/#{i['url']}\" />
+      <meta property=\"og:image\" content=\"#{join_url(@base_url, i['url'])}\" />
       "
       end
     end
@@ -224,6 +229,7 @@ class TouitrParser
 
     processed_media = []
     if has_media
+      binding.pry
       processed_media = post["media"].map do |m|
         # Mustache needs explicit booleans for conditionals
         is_image = m["type"] == 'image' || m["type"] != 'video' # default fallback to image
@@ -233,22 +239,22 @@ class TouitrParser
       end
     end
 
-    processed_content = post["content"]
-
     view_data = {
       base_url: @base_url,
       id: post["id"],
+      post_url: join_url(join_url(@base_url, 'post'), "#{post['id']}.html"),
       isRetweet: post["isRetweet"],
       retweetedBy: post["retweetedBy"],
       replyTo: post["replyTo"],
       replyToAuthor: post["replyToAuthor"],
       author: post["author"],
-      author_short: post["author"].to_s[1, 3],
+      author_short: post["author"].to_s[0, 2],
+      avatar_url: post["avatar"] ? join_url(@base_url, post['avatar']) : nil,
       handle: post["handle"],
       avatar: post["avatar"],
       full_timestamp: format_full_timestamp(post["timestamp"]),
       formatted_date: format_date(post["timestamp"]),
-      processedContent: processed_content,
+      processedContent: post["content"],
       link: post["link"],
       has_media: has_media,
       media_grid_class: media_grid_class,
@@ -262,6 +268,8 @@ class TouitrParser
       HEADER_TEMPLATE, {
         'handle' => @archive_owner['handle'],
         'isPost' => true,
+        'stylesheet_url' => join_url(@base_url, 'styles.css'),
+        'mustache_url' => join_url(@base_url, 'mustache.js'),
         'base_url' => @base_url,
         'post_opengraph' => generate_post_opengraph(post)
       }
@@ -323,7 +331,7 @@ class TouitrParser
     @archive_owner = {
       'handle' => get_archive_username(),
       'displayname' => get_archive_displayname(),
-      'avatar' => get_archive_avatar(),
+      'avatar_url' => join_url(@base_url, get_archive_avatar()),
       'id' => get_archive_userid()
     }
 
@@ -397,7 +405,7 @@ class TouitrParser
             end
             dest_image_filename = File.basename(m_zip_path)
             extract_file(m_zip_path, File.join(@pics_directory, dest_image_filename))
-            item['url'] = "/#{IMAGES_DIR_NAME}/#{dest_image_filename}"
+            item['url'] = join_url(@base_url, "/#{IMAGES_DIR_NAME}/#{dest_image_filename}")
 
             item
           end
@@ -409,7 +417,7 @@ class TouitrParser
             dest_image_filename = File.basename(m_zip_path)
             extract_file(m_zip_path, File.join(@pics_directory, dest_image_filename))
 
-            "/#{IMAGES_DIR_NAME}/#{dest_image_filename}"
+            join_url(@base_url, "/#{IMAGES_DIR_NAME}/#{dest_image_filename}")
           end
         end
 
@@ -533,7 +541,10 @@ index = File.open(File.join(output_directory, 'index.html'), 'w')
 index.write(generate_index(
               {
                 'handle' => t.archive_owner['handle'],
-                'base_url' => base_url
+                'base_url' => base_url,
+                'mustache_url' => join_url(base_url, 'mustache.js'),
+                'stylesheet_url' => join_url(base_url, 'styles.css'),
+                'scriptjs_url' => join_url(base_url, 'script.js')
               }
             ))
 index.close()

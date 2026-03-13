@@ -14,14 +14,14 @@
     
     <div class="post-header">
         <a href='https://twitter.com/{{author}}' class="avatar">
-            <img src="{{base_url}}/{{avatar}}" alt="{{author_short}}" class="avatar" loading="lazy">
+            <img src="{{avatar_url}}" alt="{{author_short}}" class="avatar" loading="lazy">
         </a>
         <div class="post-info">
             <div class="post-author">
                 <span class="author-name"><a href='https://twitter.com/{{author}}'>{{author}}</a></span>
                 <span class="author-handle"><a href='https://twitter.com/{{handle}}'>@{{handle}}</a></span>
                 <span class="post-date-separator">·</span>
-                <a href="{{base_url}}/post/{{id}}.html" class="post-date" title="{{full_timestamp}}">{{formatted_date}}</a>
+                <a href="{{post_url}}" class="post-date" title="{{full_timestamp}}">{{formatted_date}}</a>
                 <span class="post-date-separator">·</span>
                 <a href="https://twitter.com/{{handle}}/status/{{id}}" class="origlink">View original on Twitter</a>
             </div>
@@ -45,11 +45,11 @@
                 <div class="media-grid {{media_grid_class}}">
                     {{#media}}
                         {{#is_image}}
-                        <img src="{{base_url}}{{url}}" alt="Post media" loading="lazy">
+                        <img src="{{media_url}}" alt="Post media" loading="lazy">
                         {{/is_image}}
                         
                         {{#is_video}}
-                        <video src='{{base_url}}{{url}}' controls='true' autoplay='false' preload='metadata' class='video-player'></video>
+                        <video src='{{media_url}}' controls='true' autoplay='false' preload='metadata' class='video-player'></video>
                         {{/is_video}}
                     {{/media}}
                 </div>
