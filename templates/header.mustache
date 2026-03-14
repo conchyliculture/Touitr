@@ -2,22 +2,25 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="follow,index">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>@{{handle}}'s Twitter Archive</title>
     <link rel="stylesheet" href="{{stylesheet_url}}">
-    <meta property="og:title" content="@{{handle}}'s Twitter Archive" />
-    <meta property="og:site_name" content="@{{handle}}'s Twitter Archive" />
+    <meta property="og:title" content="@{{handle}}'s Twitter Archive">
     {{#isPost}}
       {{{post_opengraph}}}
     {{/isPost}}
     {{^isPost}}
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="{{base_url}}" />
+    <meta property="og:description" content="@{{handle}}'s Twitter Archive">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="{{base_url}}">
     {{/isPost}}
 
 </head>
 <body>
+    {{^isPost}}
     <script src="{{mustache_url}}"></script>
+    {{/isPost}}
     <!-- Info Box -->
     <div class="info-box">
         <div class="info-box-header">
@@ -36,7 +39,6 @@
     </div>
 
     <div class="container">
-        <header class="header">
         {{#isPost}}
                     <div class="return-to-timeline">
                     <a href="{{base_url}}" class="return-button">
