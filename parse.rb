@@ -228,11 +228,10 @@ class TouitrParser
 
   def generate_post_file(post)
     has_media = post["media"] && !post["media"].empty?
-    media_grid_class = has_media && post["media"].length > 1 ? "grid-#{post['media'].length}" : ""
+    media_grid_class = has_media && post["media"].size > 1 ? "grid-#{post['media'].size}" : ""
 
     processed_media = []
     if has_media
-      binding.pry
       processed_media = post["media"].map do |m|
         # Mustache needs explicit booleans for conditionals
         is_image = m["type"] == 'image' || m["type"] != 'video' # default fallback to image

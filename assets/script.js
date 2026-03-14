@@ -129,7 +129,7 @@ function createPostHTML(post) {
     if (hasMedia) {
         processedMedia = post.media.map(media => ({
             ...media,
-            media_url: join_url(post.base_url, media.url),
+            media_url: media.url,
             is_image: media.type === 'image' || media.type !== 'video', // Fallback to image
             is_video: media.type === 'video'
         }));
