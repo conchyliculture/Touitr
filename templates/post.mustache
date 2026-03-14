@@ -1,0 +1,71 @@
+<article class="post" id="post-{{id}}" data-post-id="{{id}}">
+    {{#isRetweet}}
+    <div class="retweet-indicator">
+        <span class="retweet-icon">🔄</span>
+        <span>{{retweetedBy}} Retweeted</span>
+    </div>
+    {{/isRetweet}}
+    
+    {{#replyTo}}
+    <div class="reply-indicator">
+        <span>Replying to <a href="{{replyTo}}" class="reply-link">@{{replyToAuthor}}</a></span>
+    </div>
+    {{/replyTo}}
+    
+    <div class="post-header">
+        <a href='https://twitter.com/{{handle}}' class="avatar">
+            <img src="{{avatar_url}}" alt="{{author_short}}" class="avatar" loading="lazy">
+        </a>
+        <div class="post-info">
+            <div class="post-author">
+                <span class="author-name"><a href='https://twitter.com/{{handle}}'>{{author}}</a></span>
+                <span class="author-handle"><a href='https://twitter.com/{{handle}}'>@{{handle}}</a></span>
+                <span class="post-date-separator">·</span>
+                <a href="{{post_url}}" class="post-date" title="{{full_timestamp}}">{{formatted_date}}</a>
+                <span class="post-date-separator">·</span>
+                <a href="https://twitter.com/{{handle}}/status/{{id}}" class="origlink">View original on Twitter</a>
+            </div>
+            <div class="post-content">{{{processedContent}}}</div>
+            
+            {{#link}}
+            <a href="{{url}}" target="_blank" rel="noopener noreferrer" class="link-preview">
+                {{#image}}
+                <img src="{{image}}" alt="{{title}}" class="link-preview-image" loading="lazy">
+                {{/image}}
+                <div class="link-preview-content">
+                    <div class="link-preview-domain">{{domain}}</div>
+                    <div class="link-preview-title">{{title}}</div>
+                    <div class="link-preview-description">{{description}}</div>
+                </div>
+            </a>
+            {{/link}}
+            
+            {{#has_media}}
+            <div class="post-media">
+                <div class="media-grid {{media_grid_class}}">
+                    {{#media}}
+                        {{#is_image}}
+                        <img src="{{media_url}}" alt="Post media" loading="lazy">
+                        {{/is_image}}
+                        
+                        {{#is_video}}
+                        <video src='{{media_url}}' controls='true' autostart='0' preload='metadata' class='video-player'></video>
+                        {{/is_video}}
+                    {{/media}}
+                </div>
+            </div>
+            {{/has_media}}
+            
+            <div class="post-actions">
+                <div class="action-btn">
+                    <span>🔄</span>
+                    <span>{{formatted_retweets}}</span>
+                </div>
+                <div class="action-btn">
+                    <span>❤️</span>
+                    <span>{{formatted_likes}}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</article>

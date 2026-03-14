@@ -1,26 +1,88 @@
 require 'json'
-require 'mechanize'
 require "logger"
+require 'marcel'
+require 'mechanize'
+require 'mime-types'
+require 'mustache'
 require 'net/http'
 require 'nokogiri'
-require 'pry'
+require 'optparse'
+require 'progressbar'
+require 'time'
 require 'timeout'
 require 'zip'
+
+HEADER_TEMPLATE = File.read("templates/header.mustache")
+POST_TEMPLATE = File.read("templates/post.mustache")
+INDEX_TEMPLATE = File.read("templates/index.mustache")
+FOOTER_TEMPLATE = File.read("templates/footer.mustache")
+TWITTER_HOST = 'twitter.com' # You may replace this with another twitter redirector, like fxtwitter.com
+
+def join_url(first, second)
+  "#{first.gsub(/\/+$/, '')}/#{second.sub(/^\/+/, '')}"
+end
+
+def now()
+  return Time.now
+end
+
+class ProgressBar
+  class Base
+    attr_accessor :logger
+
+    alias original_initialize initialize
+    def initialize(*args)
+      @logger = Logger.new self
+      original_initialize(*args)
+    end
+  end
+
+  class Logger < ::Logger
+    alias original_initialize initialize
+    def initialize(progress_bar) # rubocop:disable Lint/MissingSuper
+      @progress_bar = progress_bar
+      original_initialize nil
+    end
+
+    def add(severity, message = nil, progname = nil, &_block)
+      severity ||= UNKNOWN
+      return true if severity < @level
+
+      progname ||= @progname
+      if message.nil?
+        if block_given?
+          message = yield
+        else
+          message = progname
+          progname = @progname
+        end
+      end
+      @progress_bar.log format_message(format_severity(severity), now, progname, message)
+      true
+    end
+  end
+end
 
 class TouitrParser
   CACHE_DIR = '.cache'.freeze
   IMAGES_DIR_NAME = 'images'.freeze
-  TWITTER_HOST = 'fxtwitter.com'.freeze
 
-  def initialize(zip_file, destination_directory)
+  attr_accessor :archive_owner
+
+  def initialize(zip_file, destination_directory, base_url)
     raise StandardError, "Please specify an existing zipfile" unless zip_file
 
-    @log = Logger.new($stdout)
-    @log.level = $VERBOSE ? Logger::DEBUG : Logger::WARN
+    @base_url = base_url
+    @progress_bar = nil
 
     @destination_directory = destination_directory
     unless Dir.exist?(@destination_directory)
       Dir.mkdir(@destination_directory)
+    end
+
+    @posts_directory = File.join(destination_directory, 'post')
+    unless Dir.exist?(@posts_directory)
+      Dir.mkdir(@posts_directory)
     end
 
     @pics_directory = File.join(@destination_directory, IMAGES_DIR_NAME)
@@ -36,13 +98,15 @@ class TouitrParser
       Dir.mkdir(CACHE_DIR)
     end
 
+    @archive_owner = {}
+
     @tco_links_cache_path = File.join(CACHE_DIR, 'links')
     @tco_links_cache = {}
     if File.exist?(@tco_links_cache_path)
       begin
         @tco_links_cache = JSON.parse(File.read(@tco_links_cache_path))
       rescue StandardError => e
-        @log.error "Error parsing cache file #{@tco_links_cache_path}. Consider deleting the file."
+        puts "Error parsing cache file #{@tco_links_cache_path}. Consider deleting the file."
         raise e
       end
     end
@@ -52,6 +116,13 @@ class TouitrParser
     if File.exist?(@og_cache_path)
       @og_cache = JSON.parse(File.read(@og_cache_path, encoding: Encoding::UTF_8))
     end
+  end
+
+  def get_media_type(file_path)
+    io = File.open(file_path)
+    type = Marcel::MimeType.for(io)
+    io.close
+    return type
   end
 
   def update_og_cache(url, type, value)
@@ -90,6 +161,40 @@ class TouitrParser
     f.close
   end
 
+  def generate_post_opengraph(data)
+    content_url = join_url(join_url(@base_url, 'post'), "#{data['id']}.html")
+    og = "
+    <meta property=\"og:url\" content=\"#{content_url}\">
+    <meta property=\"og:description\" content=\"#{Nokogiri::HTML.parse(data['content']).text}\">
+    "
+
+    if data['media']
+      case data['media'][0]['type']
+      when 'video'
+        v = data['media'][0]
+        og += "
+    <meta property=\"og:video\" content=\"#{v['media_url']}\">
+    <meta property=\"og:video:secure_url\" content=\"#{v['media_url']}\">
+    <meta property=\"og:video:type\" content=\"#{v['media_type']}\">
+    <meta property=\"og:image\" content=\"#{v['thumbnail']}\">
+    <meta property=\"twitter:card\" content=\"player\">
+      "
+      when 'photo'
+        og += "
+    <meta name=\"twitter:card\" content=\"summary_large_image\">
+    "
+        data['media'].each do |i|
+          og += "
+    <meta property=\"og:type\" content=\"image\">
+    <meta property=\"og:image\" content=\"#{i['media_url']}\">
+    "
+        end
+
+      end
+    end
+    return og
+  end
+
   def resolve_tco(url)
     return @tco_links_cache[url] if @tco_links_cache[url]
 
@@ -97,7 +202,7 @@ class TouitrParser
     resp = Net::HTTP.get_response(URI(url))
     if resp.code == "301"
       loc = resp['location']
-      loc = loc.force_encoding('utf-8')
+      loc = loc.encode('UTF-8', invalid: :replace, undef: :replace)
       @log.info("... To #{loc}")
       update_tco_cache(url, loc)
       return resp['location']
@@ -154,9 +259,9 @@ class TouitrParser
 
   def extract_file(zip_path, destination)
     if File.exist?(destination)
-      @log.debug "File #{destination} already exists, skipping extraction"
       return
     end
+
     File.new(destination, 'w+').write(@zip.read(zip_path))
   end
 
@@ -164,6 +269,96 @@ class TouitrParser
     tweets_file = @zip.read(js_file)
     j = JSON.parse(tweets_file.sub(/\A[^\[{]*=/, '').strip.chomp(';'))
     return j
+  end
+
+  def format_number(num)
+    return "#{(num.to_i / 1_000.0).round(1)}K" if num.to_i >= 1_000
+
+    num.to_s
+  end
+
+  def generate_post_file(post)
+    has_media = post["media"] && !post["media"].empty?
+    media_grid_class = has_media && post["media"].size > 1 ? "grid-#{post['media'].size}" : ""
+
+    processed_media = []
+    if has_media
+      processed_media = post["media"].map do |m|
+        # Mustache needs explicit booleans for conditionals
+        is_image = m["type"] == 'image' || m["type"] != 'video' # default fallback to image
+        is_video = m["type"] == 'video'
+
+        m.merge(is_image: is_image, is_video: is_video)
+      end
+    end
+
+    avatar_url = nil
+    if post["handle"] == @archive_owner['handle']
+      avatar_url = @archive_owner['avatar_url']
+    else
+      avatar_url = post["avatar"] ? join_url(@base_url, post['avatar']) : nil
+    end
+
+    view_data = {
+      base_url: @base_url,
+      id: post["id"],
+      post_url: join_url(join_url(@base_url, 'post'), "#{post['id']}.html"),
+      isRetweet: post["isRetweet"],
+      retweetedBy: post["retweetedBy"],
+      replyTo: post["replyTo"],
+      replyToAuthor: post["replyToAuthor"],
+      author: post["author"],
+      author_short: post["author"].to_s[0, 2],
+      avatar_url: avatar_url,
+      handle: post["handle"],
+      avatar: post["avatar"],
+      full_timestamp: format_full_timestamp(post["timestamp"]),
+      formatted_date: format_date(post["timestamp"]),
+      processedContent: post["content"],
+      link: post["link"],
+      has_media: has_media,
+      media_grid_class: media_grid_class,
+      media: processed_media,
+      formatted_retweets: format_number(post["retweets"]),
+      formatted_likes: format_number(post["likes"])
+    }
+
+    # 4. Render!
+    html_output = Mustache.render(
+      HEADER_TEMPLATE, {
+        'handle' => @archive_owner['handle'],
+        'isPost' => true,
+        'stylesheet_url' => join_url(@base_url, 'styles.css'),
+        'mustache_url' => join_url(@base_url, 'mustache.js'),
+        'base_url' => @base_url,
+        'post_opengraph' => generate_post_opengraph(post)
+      }
+    )
+    html_output += "\n"
+    html_output += Mustache.render(POST_TEMPLATE, view_data)
+    html_output += "\n"
+    html_output += Mustache.render(FOOTER_TEMPLATE, {})
+
+    f = File.new(File.join(@posts_directory, "#{post['id']}.html"), 'w')
+    f.write(html_output)
+    f.close
+  end
+
+  def self.highlight_text(text, query)
+    return text if query.nil? || query.empty?
+
+    # Simple regex substitution matching the JS logic
+    text.gsub(/(#{Regexp.escape(query)})/i, '<span class="highlight">\1</span>')
+  end
+
+  def format_date(timestamp)
+    # Placeholder: Implement your Ruby date formatting here
+    Time.parse(timestamp).strftime('%b %-d')
+  end
+
+  def format_full_timestamp(timestamp)
+    # Placeholder: Implement your Ruby full date formatting here
+    Time.parse(timestamp).strftime('%b %-d, %Y, %I:%M %p')
   end
 
   def clean_tweet_content(tweet)
@@ -192,27 +387,31 @@ class TouitrParser
     return tweet['full_text']
   end
 
-  def tweets_to_json
-    archive_owner = {
+  def parse_archive
+    @archive_owner = {
       'handle' => get_archive_username(),
       'displayname' => get_archive_displayname(),
-      'avatar' => get_archive_avatar(),
+      'avatar_url' => join_url(@base_url, get_archive_avatar()),
       'id' => get_archive_userid()
     }
+
     res = []
     all_tweets = javascript_to_json('data/tweets.js')
+    @progress_bar = ProgressBar.create(total: all_tweets.size, title: "Converting tweets", format: "%t %c/%C |%b>%i| %e")
+    @log = @progress_bar.logger
+    @log.level = $VERBOSE ? Logger::DEBUG : Logger::WARN
     @log.info("Will convert #{all_tweets.size} tweets")
     all_tweets.each do |t|
       tweet = t['tweet']
 
       begin
         info = {
-          'avatar' => archive_owner['avatar'],
+          'avatar' => @archive_owner['avatar'],
           'replies' => 0,
           'retweets' => tweet['retweet_count'],
           'likes' => tweet['favorite_count'],
-          'author' => archive_owner['displayname'],
-          'handle' => archive_owner['handle'],
+          'author' => @archive_owner['displayname'],
+          'handle' => @archive_owner['handle'],
           "id" => tweet['id'],
           "timestamp" => tweet['created_at'],
           "type" => tweet['type'] || 'default'
@@ -220,16 +419,16 @@ class TouitrParser
 
         if tweet['full_text'].start_with?('RT @')
           info['isRetweet'] = true
-          info['retweetedBy'] = archive_owner['displayname']
+          info['retweetedBy'] = @archive_owner['displayname']
           info['avatar'] = ''
           info['author'] = tweet['full_text'].scan(/RT @([^\s]+):/)[0][0]
           info['handle'] = info['author']
           tweet['full_text'] = tweet['full_text'].delete_prefix("RT @#{info['author']}: ")
         elsif tweet['in_reply_to_status_id'] =~ /^\d+$/
           reply_to_id = tweet['in_reply_to_user_id_str']
-          if reply_to_id == archive_owner['id']
-            info["replyTo"] = build_twitter_link(handle: archive_owner['handle'], tweet_id: tweet['in_reply_to_status_id'])
-            info["replyToAuthor"] = archive_owner['handle']
+          if reply_to_id == @archive_owner['id']
+            info["replyTo"] = build_twitter_link(handle: @archive_owner['handle'], tweet_id: tweet['in_reply_to_status_id'])
+            info["replyToAuthor"] = @archive_owner['handle']
           else
             reply_to_ent = tweet['entities']['user_mentions'].select { |um| um['id'] == reply_to_id }[0]
             if reply_to_ent
@@ -268,20 +467,12 @@ class TouitrParser
               raise StandardError, "Unsupported extended_entities media type #{m['type']}"
             end
             dest_image_filename = File.basename(m_zip_path)
-            extract_file(m_zip_path, File.join(@pics_directory, dest_image_filename))
-            item['url'] = "/#{IMAGES_DIR_NAME}/#{dest_image_filename}"
+            dest_image_path = File.join(@pics_directory, dest_image_filename)
+            extract_file(m_zip_path, dest_image_path)
+            item['media_type'] = get_media_type(dest_image_path)
+            item['media_url'] = join_url(@base_url, "/#{IMAGES_DIR_NAME}/#{dest_image_filename}")
 
             item
-          end
-
-        elsif tweet['entities']['media']
-          info['media'] = tweet['entities']['media'].map do |m|
-            m_url = m['media_url_https']
-            m_zip_path = find_media(m_url.split('/')[-1])
-            dest_image_filename = File.basename(m_zip_path)
-            extract_file(m_zip_path, File.join(@pics_directory, dest_image_filename))
-
-            "/#{IMAGES_DIR_NAME}/#{dest_image_filename}"
           end
         end
 
@@ -328,7 +519,10 @@ class TouitrParser
         raise e
       end
 
+      generate_post_file(info)
+
       res << info
+      @progress_bar.increment
     end
 
     out = File.open("#{@destination_directory}/posts.json", 'w')
@@ -337,15 +531,85 @@ class TouitrParser
   end
 end
 
-dest_dir = ARGV[1]
-t = TouitrParser.new(ARGV[0], dest_dir)
-t.tweets_to_json
+def generate_index(params)
+  index_html = Mustache.render(HEADER_TEMPLATE, params)
+  index_html += Mustache.render(INDEX_TEMPLATE, params)
+  index_html += Mustache.render(FOOTER_TEMPLATE, params)
+  return index_html
+end
 
-FileUtils.cp('assets/script.js', File.join(dest_dir, "/"))
-FileUtils.cp('assets/styles.css', File.join(dest_dir, "/"))
+def generate_scriptjs(params)
+  script = File.read('assets/script.js')
+  script.gsub!('PLACEHOLDER_POST_TEMPLATE', File.read('templates/post.mustache'))
+  script.gsub!('PLACEHOLDER_BASE_URL', params['base_url'])
+end
 
-index = File.read('assets/index.html')
-index.gsub!('PLACEHOLDER-TITLE', "@#{t.get_archive_username} Twitter Archive")
-i = File.open(File.join(dest_dir, 'index.html'), 'w')
-i.write(index)
-i.close
+config_file = "config.json"
+config = {}
+
+base_url = nil
+
+parser = OptionParser.new
+parser.on('-c CONFIG_FILE', '--config CONFIG_FILE', '(Optional) Point to a specific config.json file') do |value|
+  config_file = value
+end
+if File.exist?(config_file)
+  config = JSON.parse(File.read(config_file))
+end
+
+output_directory = config['output_directory'] || '/tmp/touitr'
+archive_file = config['archive_file']
+
+parser.on('-d DEST_DIR', '--destination DEST_DIR', 'Output directory for generated files') do |value|
+  output_directory = value
+end
+parser.on('-z ARCHIVE', '--archive ARCHIVE', 'The zip file from your Twitter export') do |value|
+  archive_file = value
+end
+parser.on('-b BASE_URL', '--base_url BASE_URL', 'The base URL where the generated files will be hosted. ie: https://your.website.test/somewhere') do |value|
+  base_url = value
+end
+
+parser.parse!
+
+unless base_url
+  puts "You need to specify a base_url. Set it to https://your.website.test/somewhere/"
+  puts parser.help
+  exit
+end
+
+unless File.exist?(archive_file.to_s)
+  puts "Archive file '#{archive_file}' doesn't seem too exist"
+  puts parser.help
+  exit
+end
+
+unless File.directory?(output_directory)
+  FileUtils.mkdir_p(output_directory)
+end
+
+t = TouitrParser.new(archive_file, output_directory, base_url)
+t.parse_archive
+
+FileUtils.cp('assets/styles.css', File.join(output_directory, '/'))
+FileUtils.cp('assets/mustache.js', File.join(output_directory, '/'))
+
+index = File.open(File.join(output_directory, 'index.html'), 'w')
+index.write(generate_index(
+              {
+                'handle' => t.archive_owner['handle'],
+                'base_url' => base_url,
+                'mustache_url' => join_url(base_url, 'mustache.js'),
+                'stylesheet_url' => join_url(base_url, 'styles.css'),
+                'scriptjs_url' => join_url(base_url, 'script.js')
+              }
+            ))
+index.close()
+
+script = File.open(File.join(output_directory, 'script.js'), 'w')
+script.write(generate_scriptjs(
+               {
+                 'base_url' => base_url
+               }
+             ))
+script.close
