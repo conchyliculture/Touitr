@@ -1,4 +1,3 @@
-require 'pry'
 require 'json'
 require "logger"
 require 'marcel'
@@ -23,6 +22,47 @@ def join_url(first, second)
   "#{first.gsub(/\/+$/, '')}/#{second.sub(/^\/+/, '')}"
 end
 
+def now()
+  return Time.now
+end
+
+class ProgressBar
+  class Base
+    attr_accessor :logger
+
+    alias original_initialize initialize
+    def initialize(*args)
+      @logger = Logger.new self
+      original_initialize(*args)
+    end
+  end
+
+  class Logger < ::Logger
+    alias original_initialize initialize
+    def initialize(progress_bar) # rubocop:disable Lint/MissingSuper
+      @progress_bar = progress_bar
+      original_initialize nil
+    end
+
+    def add(severity, message = nil, progname = nil, &_block)
+      severity ||= UNKNOWN
+      return true if severity < @level
+
+      progname ||= @progname
+      if message.nil?
+        if block_given?
+          message = yield
+        else
+          message = progname
+          progname = @progname
+        end
+      end
+      @progress_bar.log format_message(format_severity(severity), now, progname, message)
+      true
+    end
+  end
+end
+
 class TouitrParser
   CACHE_DIR = '.cache'.freeze
   IMAGES_DIR_NAME = 'images'.freeze
@@ -33,9 +73,7 @@ class TouitrParser
     raise StandardError, "Please specify an existing zipfile" unless zip_file
 
     @base_url = base_url
-
-    @log = Logger.new($stdout)
-    @log.level = $VERBOSE ? Logger::DEBUG : Logger::WARN
+    @progress_bar = nil
 
     @destination_directory = destination_directory
     unless Dir.exist?(@destination_directory)
@@ -68,7 +106,7 @@ class TouitrParser
       begin
         @tco_links_cache = JSON.parse(File.read(@tco_links_cache_path))
       rescue StandardError => e
-        @log.error "Error parsing cache file #{@tco_links_cache_path}. Consider deleting the file."
+        puts "Error parsing cache file #{@tco_links_cache_path}. Consider deleting the file."
         raise e
       end
     end
@@ -78,6 +116,13 @@ class TouitrParser
     if File.exist?(@og_cache_path)
       @og_cache = JSON.parse(File.read(@og_cache_path, encoding: Encoding::UTF_8))
     end
+  end
+
+  def get_media_type(file_path)
+    io = File.open(file_path)
+    type = Marcel::MimeType.for(io)
+    io.close
+    return type
   end
 
   def update_og_cache(url, type, value)
@@ -118,27 +163,33 @@ class TouitrParser
 
   def generate_post_opengraph(data)
     content_url = join_url(join_url(@base_url, 'post'), "#{data['id']}.html")
-    og = "<meta property=\"og:url\" content=\"#{content_url}\" />"
+    og = "
+    <meta property=\"og:url\" content=\"#{content_url}\">
+    <meta property=\"og:description\" content=\"#{Nokogiri::HTML.parse(data['content']).text}\">
+    "
 
     if data['media']
       case data['media'][0]['type']
       when 'video'
         v = data['media'][0]
         og += "
-      <meta property=\"og:type\" content=\"video.other\" />
-      <meta property=\"og:video\" content=\"#{join_url(@base_url, v['url'])}\" />
-      <meta property=\"og:video:secure_url\" content=\"#{join_url(@base_url, v['url'])}\" />
-      <meta property=\"og:video:type\" content=\"video/mp4\" />
-      <meta property=\"og:video:width\" content=\"640\" />
-      <meta property=\"og:video:height\" content=\"360\" />
-      <meta property=\"og:image\" content=\"#{v['thumbnail']}\" />
+    <meta property=\"og:video\" content=\"#{v['media_url']}\">
+    <meta property=\"og:video:secure_url\" content=\"#{v['media_url']}\">
+    <meta property=\"og:video:type\" content=\"#{v['media_type']}\">
+    <meta property=\"og:image\" content=\"#{v['thumbnail']}\">
+    <meta property=\"twitter:card\" content=\"player\">
       "
       when 'photo'
-        i = data['media'][0]
         og += "
-      <meta property=\"og:type\" content=\"image.other\" />
-      <meta property=\"og:image\" content=\"#{join_url(@base_url, i['url'])}\" />
-      "
+    <meta name=\"twitter:card\" content=\"summary_large_image\">
+    "
+        data['media'].each do |i|
+          og += "
+    <meta property=\"og:type\" content=\"image\">
+    <meta property=\"og:image\" content=\"#{i['media_url']}\">
+    "
+        end
+
       end
     end
     return og
@@ -151,7 +202,7 @@ class TouitrParser
     resp = Net::HTTP.get_response(URI(url))
     if resp.code == "301"
       loc = resp['location']
-      loc = loc.force_encoding('utf-8')
+      loc = loc.encode('UTF-8', invalid: :replace, undef: :replace)
       @log.info("... To #{loc}")
       update_tco_cache(url, loc)
       return resp['location']
@@ -208,9 +259,9 @@ class TouitrParser
 
   def extract_file(zip_path, destination)
     if File.exist?(destination)
-      @log.debug "File #{destination} already exists, skipping extraction"
       return
     end
+
     File.new(destination, 'w+').write(@zip.read(zip_path))
   end
 
@@ -241,6 +292,13 @@ class TouitrParser
       end
     end
 
+    avatar_url = nil
+    if post["handle"] == @archive_owner['handle']
+      avatar_url = @archive_owner['avatar_url']
+    else
+      avatar_url = post["avatar"] ? join_url(@base_url, post['avatar']) : nil
+    end
+
     view_data = {
       base_url: @base_url,
       id: post["id"],
@@ -251,7 +309,7 @@ class TouitrParser
       replyToAuthor: post["replyToAuthor"],
       author: post["author"],
       author_short: post["author"].to_s[0, 2],
-      avatar_url: post["avatar"] ? join_url(@base_url, post['avatar']) : nil,
+      avatar_url: avatar_url,
       handle: post["handle"],
       avatar: post["avatar"],
       full_timestamp: format_full_timestamp(post["timestamp"]),
@@ -339,6 +397,9 @@ class TouitrParser
 
     res = []
     all_tweets = javascript_to_json('data/tweets.js')
+    @progress_bar = ProgressBar.create(total: all_tweets.size, title: "Converting tweets", format: "%t %c/%C |%b>%i| %e")
+    @log = @progress_bar.logger
+    @log.level = $VERBOSE ? Logger::DEBUG : Logger::WARN
     @log.info("Will convert #{all_tweets.size} tweets")
     all_tweets.each do |t|
       tweet = t['tweet']
@@ -406,20 +467,12 @@ class TouitrParser
               raise StandardError, "Unsupported extended_entities media type #{m['type']}"
             end
             dest_image_filename = File.basename(m_zip_path)
-            extract_file(m_zip_path, File.join(@pics_directory, dest_image_filename))
-            item['url'] = join_url(@base_url, "/#{IMAGES_DIR_NAME}/#{dest_image_filename}")
+            dest_image_path = File.join(@pics_directory, dest_image_filename)
+            extract_file(m_zip_path, dest_image_path)
+            item['media_type'] = get_media_type(dest_image_path)
+            item['media_url'] = join_url(@base_url, "/#{IMAGES_DIR_NAME}/#{dest_image_filename}")
 
             item
-          end
-
-        elsif tweet['entities']['media']
-          info['media'] = tweet['entities']['media'].map do |m|
-            m_url = m['media_url_https']
-            m_zip_path = find_media(m_url.split('/')[-1])
-            dest_image_filename = File.basename(m_zip_path)
-            extract_file(m_zip_path, File.join(@pics_directory, dest_image_filename))
-
-            join_url(@base_url, "/#{IMAGES_DIR_NAME}/#{dest_image_filename}")
           end
         end
 
@@ -469,6 +522,7 @@ class TouitrParser
       generate_post_file(info)
 
       res << info
+      @progress_bar.increment
     end
 
     out = File.open("#{@destination_directory}/posts.json", 'w')
@@ -493,6 +547,8 @@ end
 config_file = "config.json"
 config = {}
 
+base_url = nil
+
 parser = OptionParser.new
 parser.on('-c CONFIG_FILE', '--config CONFIG_FILE', '(Optional) Point to a specific config.json file') do |value|
   config_file = value
@@ -503,7 +559,6 @@ end
 
 output_directory = config['output_directory'] || '/tmp/touitr'
 archive_file = config['archive_file']
-base_url = config['base_url'] || '/'
 
 parser.on('-d DEST_DIR', '--destination DEST_DIR', 'Output directory for generated files') do |value|
   output_directory = value
