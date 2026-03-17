@@ -12,7 +12,6 @@ class TestUtils < Minitest::Test
   end
 
   def test_get_media_type
-    
     test_png = File.join(File.dirname(__FILE__), 'test_data', 'test.png')
     type = Utils.get_media_type(test_png)
     assert_equal 'image/png', type

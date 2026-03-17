@@ -3,7 +3,6 @@ require 'nokogiri'
 require 'progressbar'
 require 'time'
 
-
 class ProgressBar
   class Base
     attr_accessor :logger
@@ -40,8 +39,9 @@ class ProgressBar
     end
   end
 end
+
 module Utils
-  DEFAULT_TWITTER_HOST = 'fxtwitter.com'
+  DEFAULT_TWITTER_HOST = 'fxtwitter.com'.freeze
   def self.join_url(first, second)
     "#{first.gsub(/\/+$/, '')}/#{second.sub(/^\/+/, '')}"
   end

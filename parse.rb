@@ -18,7 +18,6 @@ POST_TEMPLATE = File.read("templates/post.mustache")
 INDEX_TEMPLATE = File.read("templates/index.mustache")
 FOOTER_TEMPLATE = File.read("templates/footer.mustache")
 
-
 class TouitrParser
   CACHE_DIR = '.cache'.freeze
   IMAGES_DIR_NAME = 'images'.freeze
@@ -214,7 +213,6 @@ class TouitrParser
 
   def javascript_to_json(js_file)
     unless @cached_js[js_file]
-      tweets_file = @zip.read(js_file)
       @cached_js[js_file] = JSON.parse(@zip.read(js_file).sub(/\A[^\[{]*=/, '').strip.chomp(';'))
     end
     return @cached_js[js_file]
@@ -313,7 +311,7 @@ class TouitrParser
     return tweet['full_text']
   end
 
-  def parse_archive(twitter_host= Utils::DEFAULT_TWITTER_HOST)
+  def parse_archive(twitter_host = Utils::DEFAULT_TWITTER_HOST)
     @archive_owner = {
       'handle' => get_archive_username(),
       'displayname' => get_archive_displayname(),
