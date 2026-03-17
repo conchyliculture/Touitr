@@ -468,6 +468,7 @@ def generate_scriptjs(params)
   script = File.read('assets/script.js')
   script.gsub!('PLACEHOLDER_POST_TEMPLATE', File.read('templates/post.mustache'))
   script.gsub!('PLACEHOLDER_BASE_URL', params['base_url'])
+  script.gsub!('PLACEHOLDER_TWITTER_HOST', params['twitter_host'])
 end
 
 config_file = "config.json"
@@ -519,7 +520,7 @@ unless File.directory?(output_directory)
 end
 
 t = TouitrParser.new(archive_file, output_directory, base_url)
-t.parse_archive(twitter_host: twitter_host)
+#t.parse_archive(twitter_host)
 
 FileUtils.cp('assets/styles.css', File.join(output_directory, '/'))
 FileUtils.cp('assets/mustache.js', File.join(output_directory, '/'))
@@ -539,7 +540,8 @@ index.close()
 script = File.open(File.join(output_directory, 'script.js'), 'w')
 script.write(generate_scriptjs(
                {
-                 'base_url' => base_url
+                 'base_url' => base_url,
+                 'twitter_host' => twitter_host
                }
              ))
 script.close

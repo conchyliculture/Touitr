@@ -7,7 +7,8 @@ let currentIndex = 0;
 let isLoading = false;
 let searchQuery = "";
 let filteredPosts = [];
-let base_url = "PLACEHOLDER_BASE_URL"; // Edit this if you host this not at the root of a VirtualHost
+let base_url = "PLACEHOLDER_BASE_URL";
+let twitter_host = "PLACEHOLDER_TWITTER_HOST";
 
 const POST_TEMPLATE = `PLACEHOLDER_POST_TEMPLATE`
 
@@ -140,6 +141,7 @@ function createPostHTML(post) {
     // and then add our computed/formatted properties on top.
     const viewData = {
         ...post,
+        twitter_host: twitter_host, // Edit this if you used a custom twitter host in parse.rb
         base_url: base_url,
         avatar_url: post.avatar ? joinUrl(baseUrl, post.avatar) : null,
         post_url: join_url(join_url(base_url, 'post'), post['id']+'.html'),
