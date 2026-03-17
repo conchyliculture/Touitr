@@ -13,17 +13,17 @@
     {{/replyTo}}
     
     <div class="post-header">
-        <a href='https://twitter.com/{{handle}}' class="avatar">
+        <a href='https://{{twitter_host}}/{{handle}}' class="avatar">
             <img src="{{avatar_url}}" alt="{{author_short}}" class="avatar" loading="lazy">
         </a>
         <div class="post-info">
             <div class="post-author">
-                <span class="author-name"><a href='https://twitter.com/{{handle}}'>{{author}}</a></span>
-                <span class="author-handle"><a href='https://twitter.com/{{handle}}'>@{{handle}}</a></span>
+                <span class="author-name"><a href='https://{{twitter_host}}/{{handle}}'>{{author}}</a></span>
+                <span class="author-handle"><a href='https://{{twitter_host}}/{{handle}}'>@{{handle}}</a></span>
                 <span class="post-date-separator">·</span>
                 <a href="{{post_url}}" class="post-date" title="{{full_timestamp}}">{{formatted_date}}</a>
                 <span class="post-date-separator">·</span>
-                <a href="https://twitter.com/{{handle}}/status/{{id}}" class="origlink">View original on Twitter</a>
+                <a href="https://{{twitter_host}}/{{handle}}/status/{{id}}" class="origlink">View original on Twitter</a>
             </div>
             <div class="post-content">{{{processedContent}}}</div>
             

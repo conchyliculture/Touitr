@@ -241,6 +241,7 @@ class TouitrParser
     end
 
     view_data = {
+      twitter_host: @twitter_host,
       base_url: @base_url,
       id: post["id"],
       post_url: Utils.join_url(Utils.join_url(@base_url, 'post'), "#{post['id']}.html"),
@@ -292,19 +293,19 @@ class TouitrParser
     end
 
     tweet['entities']['user_mentions'].each do |um|
-      tweet['full_text'].gsub!("@#{um['screen_name']}", "<a href='https://twitter.com/#{um['screen_name']}'>@#{um['screen_name']}</a>")
+      tweet['full_text'].gsub!("@#{um['screen_name']}", "<a href='https://#{@twitter_host}/#{um['screen_name']}'>@#{um['screen_name']}</a>")
     end
 
     if tweet['extended_entities']
       tweet['extended_entities']['media'].each do |m|
         # We don't need the link to the media
-        tweet['full_text'].gsub!(m['expanded_url'].gsub('x.com', 'twitter.com'), '')
+        tweet['full_text'].gsub!(m['expanded_url'].gsub('x.com', @twitter_host), '')
       end
     end
 
     tweet['full_text'].gsub!(/#([^\s]+)/).each do
       hashtag = Regexp.last_match(1)
-      "<a href='https://twitter.com/hashtag/#{hashtag}'>##{hashtag}</a>" # rubocop:disable Lint/Void
+      "<a href='https://#{@twitter_host}/hashtag/#{hashtag}'>##{hashtag}</a>" # rubocop:disable Lint/Void
     end
 
     tweet['full_text'].gsub!("\n", "<br/>")
@@ -312,6 +313,7 @@ class TouitrParser
   end
 
   def parse_archive(twitter_host = Utils::DEFAULT_TWITTER_HOST)
+    @twitter_host = twitter_host
     @archive_owner = {
       'handle' => get_archive_username(),
       'displayname' => get_archive_displayname(),
@@ -351,13 +353,13 @@ class TouitrParser
         elsif tweet['in_reply_to_status_id'] =~ /^\d+$/
           reply_to_id = tweet['in_reply_to_user_id_str']
           if reply_to_id == @archive_owner['id']
-            info["replyTo"] = Utils.build_twitter_link(handle: @archive_owner['handle'], tweet_id: tweet['in_reply_to_status_id'], twitter_host: twitter_host)
+            info["replyTo"] = Utils.build_twitter_link(handle: @archive_owner['handle'], tweet_id: tweet['in_reply_to_status_id'], twitter_host: @twitter_host)
             info["replyToAuthor"] = @archive_owner['handle']
           else
             reply_to_ent = tweet['entities']['user_mentions'].select { |um| um['id'] == reply_to_id }[0]
             if reply_to_ent
               reply_to_handle = reply_to_ent['screen_name']
-              info["replyTo"] = Utils.build_twitter_link(handle: reply_to_handle, tweet_id: tweet['in_reply_to_status_id'], twitter_host: twitter_host)
+              info["replyTo"] = Utils.build_twitter_link(handle: reply_to_handle, tweet_id: tweet['in_reply_to_status_id'], twitter_host: @twitter_host)
               info["replyToAuthor"] = tweet['in_reply_to_screen_name']
             elsif tweet['full_text'].start_with?('@')
               reply_to_handle = tweet['full_text'].scan(/^@([^ ]+)/)[0][0]
