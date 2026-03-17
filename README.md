@@ -29,7 +29,7 @@ $ bundle config set path 'vendor/bundle' ; bundle install
 Go to Twitter and export your data. Wait for a day, and then download the .zip
 
 ```
-$ bundle exec ruby parse.rb --archive <twitter_archive.zip> -d <destination_dir>  -b http://localhost:8080
+$ bundle exec ruby parse.rb -z <twitter_archive.zip> -d <destination_dir>  -b http://localhost:8080
 ```
 
 and done! Check out your new website:
