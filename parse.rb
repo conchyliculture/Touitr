@@ -7,61 +7,17 @@ require 'mustache'
 require 'net/http'
 require 'nokogiri'
 require 'optparse'
-require 'progressbar'
 require 'time'
 require 'timeout'
 require 'zip'
+
+require './lib/utils'
 
 HEADER_TEMPLATE = File.read("templates/header.mustache")
 POST_TEMPLATE = File.read("templates/post.mustache")
 INDEX_TEMPLATE = File.read("templates/index.mustache")
 FOOTER_TEMPLATE = File.read("templates/footer.mustache")
-TWITTER_HOST = 'twitter.com' # You may replace this with another twitter redirector, like fxtwitter.com
 
-def join_url(first, second)
-  "#{first.gsub(/\/+$/, '')}/#{second.sub(/^\/+/, '')}"
-end
-
-def now()
-  return Time.now
-end
-
-class ProgressBar
-  class Base
-    attr_accessor :logger
-
-    alias original_initialize initialize
-    def initialize(*args)
-      @logger = Logger.new self
-      original_initialize(*args)
-    end
-  end
-
-  class Logger < ::Logger
-    alias original_initialize initialize
-    def initialize(progress_bar) # rubocop:disable Lint/MissingSuper
-      @progress_bar = progress_bar
-      original_initialize nil
-    end
-
-    def add(severity, message = nil, progname = nil, &_block)
-      severity ||= UNKNOWN
-      return true if severity < @level
-
-      progname ||= @progname
-      if message.nil?
-        if block_given?
-          message = yield
-        else
-          message = progname
-          progname = @progname
-        end
-      end
-      @progress_bar.log format_message(format_severity(severity), now, progname, message)
-      true
-    end
-  end
-end
 
 class TouitrParser
   CACHE_DIR = '.cache'.freeze
@@ -118,13 +74,6 @@ class TouitrParser
     end
   end
 
-  def get_media_type(file_path)
-    io = File.open(file_path)
-    type = Marcel::MimeType.for(io)
-    io.close
-    return type
-  end
-
   def update_og_cache(url, type, value)
     (@og_cache[url] ||= {})[type] = value
     f = File.open(@og_cache_path, 'w')
@@ -162,7 +111,7 @@ class TouitrParser
   end
 
   def generate_post_opengraph(data)
-    content_url = join_url(join_url(@base_url, 'post'), "#{data['id']}.html")
+    content_url = Utils.join_url(Utils.join_url(@base_url, 'post'), "#{data['id']}.html")
     og = "
     <meta property=\"og:url\" content=\"#{content_url}\">
     <meta property=\"og:description\" content=\"#{Nokogiri::HTML.parse(data['content']).text}\">
@@ -209,10 +158,6 @@ class TouitrParser
     else
       raise StandardError, "Unexpected response code #{resp.code} from trying to resolve link #{url}"
     end
-  end
-
-  def build_twitter_link(handle: nil, tweet_id: nil)
-    return "https://#{TWITTER_HOST}/#{handle}/status/#{tweet_id}"
   end
 
   def get_archive_username()
@@ -271,12 +216,6 @@ class TouitrParser
     return j
   end
 
-  def format_number(num)
-    return "#{(num.to_i / 1_000.0).round(1)}K" if num.to_i >= 1_000
-
-    num.to_s
-  end
-
   def generate_post_file(post)
     has_media = post["media"] && !post["media"].empty?
     media_grid_class = has_media && post["media"].size > 1 ? "grid-#{post['media'].size}" : ""
@@ -296,13 +235,13 @@ class TouitrParser
     if post["handle"] == @archive_owner['handle']
       avatar_url = @archive_owner['avatar_url']
     else
-      avatar_url = post["avatar"] ? join_url(@base_url, post['avatar']) : nil
+      avatar_url = post["avatar"] ? Utils.join_url(@base_url, post['avatar']) : nil
     end
 
     view_data = {
       base_url: @base_url,
       id: post["id"],
-      post_url: join_url(join_url(@base_url, 'post'), "#{post['id']}.html"),
+      post_url: Utils.join_url(Utils.join_url(@base_url, 'post'), "#{post['id']}.html"),
       isRetweet: post["isRetweet"],
       retweetedBy: post["retweetedBy"],
       replyTo: post["replyTo"],
@@ -312,15 +251,15 @@ class TouitrParser
       avatar_url: avatar_url,
       handle: post["handle"],
       avatar: post["avatar"],
-      full_timestamp: format_full_timestamp(post["timestamp"]),
-      formatted_date: format_date(post["timestamp"]),
+      full_timestamp: Utils.format_full_timestamp(post["timestamp"]),
+      formatted_date: Utils.format_date(post["timestamp"]),
       processedContent: post["content"],
       link: post["link"],
       has_media: has_media,
       media_grid_class: media_grid_class,
       media: processed_media,
-      formatted_retweets: format_number(post["retweets"]),
-      formatted_likes: format_number(post["likes"])
+      formatted_retweets: Utils.format_number(post["retweets"]),
+      formatted_likes: Utils.format_number(post["likes"])
     }
 
     # 4. Render!
@@ -328,8 +267,8 @@ class TouitrParser
       HEADER_TEMPLATE, {
         'handle' => @archive_owner['handle'],
         'isPost' => true,
-        'stylesheet_url' => join_url(@base_url, 'styles.css'),
-        'mustache_url' => join_url(@base_url, 'mustache.js'),
+        'stylesheet_url' => Utils.join_url(@base_url, 'styles.css'),
+        'mustache_url' => Utils.join_url(@base_url, 'mustache.js'),
         'base_url' => @base_url,
         'post_opengraph' => generate_post_opengraph(post)
       }
@@ -342,23 +281,6 @@ class TouitrParser
     f = File.new(File.join(@posts_directory, "#{post['id']}.html"), 'w')
     f.write(html_output)
     f.close
-  end
-
-  def self.highlight_text(text, query)
-    return text if query.nil? || query.empty?
-
-    # Simple regex substitution matching the JS logic
-    text.gsub(/(#{Regexp.escape(query)})/i, '<span class="highlight">\1</span>')
-  end
-
-  def format_date(timestamp)
-    # Placeholder: Implement your Ruby date formatting here
-    Time.parse(timestamp).strftime('%b %-d')
-  end
-
-  def format_full_timestamp(timestamp)
-    # Placeholder: Implement your Ruby full date formatting here
-    Time.parse(timestamp).strftime('%b %-d, %Y, %I:%M %p')
   end
 
   def clean_tweet_content(tweet)
@@ -387,11 +309,11 @@ class TouitrParser
     return tweet['full_text']
   end
 
-  def parse_archive
+  def parse_archive(twitter_host= Utils::DEFAULT_TWITTER_HOST)
     @archive_owner = {
       'handle' => get_archive_username(),
       'displayname' => get_archive_displayname(),
-      'avatar_url' => join_url(@base_url, get_archive_avatar()),
+      'avatar_url' => Utils.join_url(@base_url, get_archive_avatar()),
       'id' => get_archive_userid()
     }
 
@@ -427,18 +349,18 @@ class TouitrParser
         elsif tweet['in_reply_to_status_id'] =~ /^\d+$/
           reply_to_id = tweet['in_reply_to_user_id_str']
           if reply_to_id == @archive_owner['id']
-            info["replyTo"] = build_twitter_link(handle: @archive_owner['handle'], tweet_id: tweet['in_reply_to_status_id'])
+            info["replyTo"] = Utils.build_twitter_link(handle: @archive_owner['handle'], tweet_id: tweet['in_reply_to_status_id'], twitter_host: twitter_host)
             info["replyToAuthor"] = @archive_owner['handle']
           else
             reply_to_ent = tweet['entities']['user_mentions'].select { |um| um['id'] == reply_to_id }[0]
             if reply_to_ent
               reply_to_handle = reply_to_ent['screen_name']
-              info["replyTo"] = build_twitter_link(handle: reply_to_handle, tweet_id: tweet['in_reply_to_status_id'])
+              info["replyTo"] = Utils.build_twitter_link(handle: reply_to_handle, tweet_id: tweet['in_reply_to_status_id'], twitter_host: twitter_host)
               info["replyToAuthor"] = tweet['in_reply_to_screen_name']
             elsif tweet['full_text'].start_with?('@')
               reply_to_handle = tweet['full_text'].scan(/^@([^ ]+)/)[0][0]
               tweet['full_text'] = tweet['full_text'].delete_prefix("@#{reply_to_handle} ")
-              info["replyTo"] = build_twitter_link(handle: reply_to_handle, tweet_id: tweet['in_reply_to_status_id'])
+              info["replyTo"] = Utils.build_twitter_link(handle: reply_to_handle, tweet_id: tweet['in_reply_to_status_id'])
               info["replyToAuthor"] = tweet['in_reply_to_screen_name']
             else
               @log.warn "Couldn't find who this tweet was a reply to : #{tweet['id_str']}, most likely User with id #{tweet['in_reply_to_user_id']} have deleted their account"
@@ -469,8 +391,8 @@ class TouitrParser
             dest_image_filename = File.basename(m_zip_path)
             dest_image_path = File.join(@pics_directory, dest_image_filename)
             extract_file(m_zip_path, dest_image_path)
-            item['media_type'] = get_media_type(dest_image_path)
-            item['media_url'] = join_url(@base_url, "/#{IMAGES_DIR_NAME}/#{dest_image_filename}")
+            item['media_type'] = Utils.get_media_type(dest_image_path)
+            item['media_url'] = Utils.join_url(@base_url, "/#{IMAGES_DIR_NAME}/#{dest_image_filename}")
 
             item
           end
@@ -559,6 +481,7 @@ end
 
 output_directory = config['output_directory'] || '/tmp/touitr'
 archive_file = config['archive_file']
+twitter_host = config['twitter_host'] || 'twitter.com'
 
 parser.on('-d DEST_DIR', '--destination DEST_DIR', 'Output directory for generated files') do |value|
   output_directory = value
@@ -568,6 +491,9 @@ parser.on('-z ARCHIVE', '--archive ARCHIVE', 'The zip file from your Twitter exp
 end
 parser.on('-b BASE_URL', '--base_url BASE_URL', 'The base URL where the generated files will be hosted. ie: https://your.website.test/somewhere') do |value|
   base_url = value
+end
+parser.on('-t TWITTER_HOST', '--twitter_host TWITTER_HOST', 'The Twitter host to use for links. ie: fxtwitter.com') do |value|
+  twitter_host = value
 end
 
 parser.parse!
@@ -589,7 +515,7 @@ unless File.directory?(output_directory)
 end
 
 t = TouitrParser.new(archive_file, output_directory, base_url)
-t.parse_archive
+t.parse_archive(twitter_host: twitter_host)
 
 FileUtils.cp('assets/styles.css', File.join(output_directory, '/'))
 FileUtils.cp('assets/mustache.js', File.join(output_directory, '/'))
@@ -599,9 +525,9 @@ index.write(generate_index(
               {
                 'handle' => t.archive_owner['handle'],
                 'base_url' => base_url,
-                'mustache_url' => join_url(base_url, 'mustache.js'),
-                'stylesheet_url' => join_url(base_url, 'styles.css'),
-                'scriptjs_url' => join_url(base_url, 'script.js')
+                'mustache_url' => Utils.join_url(base_url, 'mustache.js'),
+                'stylesheet_url' => Utils.join_url(base_url, 'styles.css'),
+                'scriptjs_url' => Utils.join_url(base_url, 'script.js')
               }
             ))
 index.close()
