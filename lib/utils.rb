@@ -27,8 +27,6 @@ module Utils
     else
       return num.to_s
     end
-    res
-
   end
 
   def self.highlight_text(text, query)

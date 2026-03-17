@@ -50,7 +50,7 @@ class ProgressBar
           progname = @progname
         end
       end
-      @progress_bar.log format_message(format_severity(severity), now, progname, message)
+      @progress_bar.log format_message(format_severity(severity), ::Time.now, progname, message)
       true
     end
   end
