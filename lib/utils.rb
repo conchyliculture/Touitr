@@ -1,3 +1,4 @@
+require 'logger'
 require 'marcel'
 require 'nokogiri'
 require 'progressbar'
