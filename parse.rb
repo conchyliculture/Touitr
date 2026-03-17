@@ -520,7 +520,7 @@ unless File.directory?(output_directory)
 end
 
 t = TouitrParser.new(archive_file, output_directory, base_url)
-#t.parse_archive(twitter_host)
+t.parse_archive(twitter_host)
 
 FileUtils.cp('assets/styles.css', File.join(output_directory, '/'))
 FileUtils.cp('assets/mustache.js', File.join(output_directory, '/'))
