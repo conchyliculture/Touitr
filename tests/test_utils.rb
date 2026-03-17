@@ -20,6 +20,10 @@ class TestUtils < Minitest::Test
     test_jpg = File.join(File.dirname(__FILE__), 'test_data', 'test.jpg')
     type = Utils.get_media_type(test_jpg)
     assert_equal 'image/jpeg', type
+
+    test_mp4 = File.join(File.dirname(__FILE__), 'test_data', 'bbb.mp4')
+    type = Utils.get_media_type(test_mp4)
+    assert_equal 'video/mp4', type
   end
 
   def test_build_twitter_link
