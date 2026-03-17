@@ -36,6 +36,8 @@ class TouitrParser
       Dir.mkdir(@destination_directory)
     end
 
+    @cached_js = {}
+
     @posts_directory = File.join(destination_directory, 'post')
     unless Dir.exist?(@posts_directory)
       Dir.mkdir(@posts_directory)
@@ -211,9 +213,11 @@ class TouitrParser
   end
 
   def javascript_to_json(js_file)
-    tweets_file = @zip.read(js_file)
-    j = JSON.parse(tweets_file.sub(/\A[^\[{]*=/, '').strip.chomp(';'))
-    return j
+    unless @cached_js[js_file]
+      tweets_file = @zip.read(js_file)
+      @cached_js[js_file] = JSON.parse(@zip.read(js_file).sub(/\A[^\[{]*=/, '').strip.chomp(';'))
+    end
+    return @cached_js[js_file]
   end
 
   def generate_post_file(post)
