@@ -1,7 +1,45 @@
 require 'marcel'
 require 'nokogiri'
+require 'progressbar'
 require 'time'
 
+
+class ProgressBar
+  class Base
+    attr_accessor :logger
+
+    alias original_initialize initialize
+    def initialize(*args)
+      @logger = Logger.new self
+      original_initialize(*args)
+    end
+  end
+
+  class Logger < ::Logger
+    alias original_initialize initialize
+    def initialize(progress_bar) # rubocop:disable Lint/MissingSuper
+      @progress_bar = progress_bar
+      original_initialize nil
+    end
+
+    def add(severity, message = nil, progname = nil, &_block)
+      severity ||= UNKNOWN
+      return true if severity < @level
+
+      progname ||= @progname
+      if message.nil?
+        if block_given?
+          message = yield
+        else
+          message = progname
+          progname = @progname
+        end
+      end
+      @progress_bar.log format_message(format_severity(severity), ::Time.now, progname, message)
+      true
+    end
+  end
+end
 module Utils
   DEFAULT_TWITTER_HOST = 'fxtwitter.com'
   def self.join_url(first, second)
