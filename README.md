@@ -14,7 +14,7 @@ Features:
  * Can share a link to a specific post
  * Resolves all the silly `t.co` links
  * Has a working search bar
- * Only show the timeline of your post, RT, replies, all one one place
+ * Only show the timeline of your post, RT, replies, all in one place
 
 ![screenshot of the output](screenshot.jpg)
 
