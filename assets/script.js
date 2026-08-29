@@ -7,6 +7,15 @@ let currentIndex = 0;
 let isLoading = false;
 let searchQuery = "";
 let filteredPosts = [];
+
+// Advanced search filters
+let mediaOnly = false;
+let fromDate = null;
+let untilDate = null;
+
+// Incremented every time the filters change, so that a page load still
+// waiting on its timeout doesn't append posts to a timeline that moved on
+let loadToken = 0;
 let base_url = "PLACEHOLDER_BASE_URL";
 let twitter_host = "PLACEHOLDER_TWITTER_HOST";
 
@@ -18,6 +27,14 @@ const loading = document.getElementById("loading");
 const searchInput = document.getElementById("searchInput");
 const clearSearch = document.getElementById("clearSearch");
 const noResults = document.getElementById("noResults");
+const advancedToggle = document.getElementById("advancedToggle");
+const advancedPanel = document.getElementById("advancedPanel");
+const advancedBadge = document.getElementById("advancedBadge");
+const filterMedia = document.getElementById("filterMedia");
+const filterFrom = document.getElementById("filterFrom");
+const filterUntil = document.getElementById("filterUntil");
+const filterSummary = document.getElementById("filterSummary");
+const resetFilters = document.getElementById("resetFilters");
 
 // Join URL pieces
 function join_url(first, second) {
@@ -168,7 +185,7 @@ function loadPosts() {
     const postsToShow = filteredPosts.slice(currentIndex, currentIndex + POSTS_PER_PAGE);
     
     if (postsToShow.length === 0) {
-        if (currentIndex === 0 && searchQuery) {
+        if (currentIndex === 0 && (searchQuery || advancedFiltersActive())) {
             noResults.style.display = 'block';
         }
         loading.style.display = 'none';
@@ -180,7 +197,11 @@ function loadPosts() {
     noResults.style.display = 'none';
     
     // Simulate network delay
+    const token = loadToken;
     setTimeout(() => {
+        // The filters changed while we were waiting, this page is stale
+        if (token !== loadToken) return;
+
         postsToShow.forEach(post => {
             timeline.insertAdjacentHTML('beforeend', createPostHTML(post));
         });
@@ -197,27 +218,97 @@ function loadPosts() {
     }, 500);
 }
 
+// Parse a "YYYY-MM-DD" value from a date input into a local Date.
+// Returns null for an empty or malformed value, so a half typed date
+// doesn't wipe out the timeline.
+function parseDateInput(value, endOfDay) {
+    if (!value) return null;
+
+    const parts = value.split('-');
+    if (parts.length !== 3) return null;
+
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const day = parseInt(parts[2], 10);
+    if (isNaN(year) || isNaN(month) || isNaN(day)) return null;
+
+    return endOfDay
+        ? new Date(year, month, day, 23, 59, 59, 999)
+        : new Date(year, month, day, 0, 0, 0, 0);
+}
+
+// Does a post match the text in the search bar?
+function matchesQuery(post) {
+    if (!searchQuery) return true;
+
+    return post.content.toLowerCase().includes(searchQuery) ||
+           post.author.toLowerCase().includes(searchQuery) ||
+           post.handle.toLowerCase().includes(searchQuery);
+}
+
+function hasMedia(post) {
+    return Boolean(post.media && post.media.length > 0);
+}
+
+function advancedFiltersActive() {
+    return mediaOnly || fromDate !== null || untilDate !== null;
+}
+
+// Update the "N posts" line and the dot on the Advanced search button
+function updateFilterSummary() {
+    const active = advancedFiltersActive();
+
+    advancedBadge.style.display = active ? 'inline-block' : 'none';
+
+    if (!active && !searchQuery) {
+        filterSummary.textContent = '';
+        return;
+    }
+
+    const count = filteredPosts.length;
+    filterSummary.textContent = `${count} ${count === 1 ? 'post' : 'posts'} found`;
+}
+
+// Apply the search query and every advanced filter, then redraw the timeline
+function applyFilters() {
+    filteredPosts = allPosts.filter(post => {
+        if (!matchesQuery(post)) return false;
+        if (mediaOnly && !hasMedia(post)) return false;
+        if (fromDate && post.timestamp < fromDate) return false;
+        if (untilDate && post.timestamp > untilDate) return false;
+        return true;
+    });
+
+    // Reset timeline
+    loadToken += 1;
+    isLoading = false;
+    timeline.innerHTML = '';
+    currentIndex = 0;
+    noResults.style.display = 'none';
+    updateFilterSummary();
+    loadPosts();
+
+    // Show/hide clear button
+    clearSearch.style.display = searchQuery ? 'block' : 'none';
+}
+
 // Search posts
 function searchPosts(query) {
     searchQuery = query.toLowerCase().trim();
-    
-    if (searchQuery === "") {
-        filteredPosts = [...allPosts];
-    } else {
-        filteredPosts = allPosts.filter(post => {
-            return post.content.toLowerCase().includes(searchQuery) ||
-                   post.author.toLowerCase().includes(searchQuery) ||
-                   post.handle.toLowerCase().includes(searchQuery);
-        });
-    }
-    
-    // Reset timeline
-    timeline.innerHTML = '';
-    currentIndex = 0;
-    loadPosts();
-    
-    // Show/hide clear button
-    clearSearch.style.display = query ? 'block' : 'none';
+    applyFilters();
+}
+
+// Read the advanced panel back into our filter state
+function readAdvancedFilters() {
+    mediaOnly = filterMedia.checked;
+    fromDate = parseDateInput(filterFrom.value, false);
+    untilDate = parseDateInput(filterUntil.value, true);
+
+    // A backwards range would silently show nothing, so keep the inputs honest
+    filterFrom.max = filterUntil.value || '';
+    filterUntil.min = filterFrom.value || '';
+
+    applyFilters();
 }
 
 // Debounce function
@@ -253,6 +344,24 @@ clearSearch.addEventListener('click', () => {
     searchInput.value = '';
     searchPosts('');
     searchInput.focus();
+});
+
+advancedToggle.addEventListener('click', () => {
+    const isOpen = advancedPanel.style.display === 'block';
+    advancedPanel.style.display = isOpen ? 'none' : 'block';
+    advancedToggle.setAttribute('aria-expanded', String(!isOpen));
+    advancedToggle.classList.toggle('open', !isOpen);
+});
+
+filterMedia.addEventListener('change', readAdvancedFilters);
+filterFrom.addEventListener('change', readAdvancedFilters);
+filterUntil.addEventListener('change', readAdvancedFilters);
+
+resetFilters.addEventListener('click', () => {
+    filterMedia.checked = false;
+    filterFrom.value = '';
+    filterUntil.value = '';
+    readAdvancedFilters();
 });
 
 // Initialize - load posts from JSON file

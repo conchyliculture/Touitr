@@ -1,4 +1,5 @@
 
+        <header class="header">
             <div class="search-container">
                 <input 
                     type="text" 
@@ -7,6 +8,41 @@
                     placeholder="Search posts..."
                 >
                 <button id="clearSearch" class="clear-btn" style="display: none;">✕</button>
+            </div>
+
+            <button
+                type="button"
+                id="advancedToggle"
+                class="advanced-toggle"
+                aria-expanded="false"
+                aria-controls="advancedPanel"
+            >
+                <span class="advanced-toggle-label">Advanced search</span>
+                <span class="advanced-toggle-arrow">▾</span>
+                <span id="advancedBadge" class="advanced-badge" style="display: none;"></span>
+            </button>
+
+            <div id="advancedPanel" class="advanced-panel" style="display: none;">
+                <label class="advanced-check">
+                    <input type="checkbox" id="filterMedia">
+                    <span>Only posts with media</span>
+                </label>
+
+                <div class="advanced-dates">
+                    <label class="advanced-field">
+                        <span class="advanced-label">From date</span>
+                        <input type="date" id="filterFrom" class="date-input">
+                    </label>
+                    <label class="advanced-field">
+                        <span class="advanced-label">Until date</span>
+                        <input type="date" id="filterUntil" class="date-input">
+                    </label>
+                </div>
+
+                <div class="advanced-actions">
+                    <span id="filterSummary" class="filter-summary"></span>
+                    <button type="button" id="resetFilters" class="reset-filters">Clear filters</button>
+                </div>
             </div>
         </header>
 
